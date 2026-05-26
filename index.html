@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>광기의 PIT 거래소 — by 청완초 교사 이우진</title>
+    <meta name="author" content="청완초등학교 교사 이우진 (Woojin Lee)">
+    <meta name="copyright" content="© 2026 청완초등학교 교사 이우진">
+    <meta name="description" content="광기의 PIT 거래소 — 초등학교 수업용 멀티플레이어 주식 거래 게임. 청완초 교사 이우진 창작.">
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('pit_logged_team') && localStorage.getItem('pit_entry_session_id')) {
+                    document.documentElement.classList.add('has-saved-student-session');
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <style>
+        :root { --bg-dark: #0f172a; --card-bg: #1e293b; --text-light: #f8fafc; --primary: #3b82f6; --success: #10b981; --danger: #ef4444; --accent: #ff9f43; }
+
+        html, body { margin: 0; padding: 0; width: 100%; min-height: 100vh; font-family: 'Malgun Gothic', sans-serif; background-color: #f1f5f9; color: #334155; }
+        body { overflow-x: hidden; }
+        html.has-saved-student-session #gate-section { display: none !important; }
+        html.has-saved-student-session #student-section { display: flex !important; }
+        html.has-saved-student-session:not(.student-session-ready) #session-boot-overlay { display: flex !important; }
+
+        /* 메인 게이트 화면 */
+        .gate-container { width: 100%; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle, #1e293b 0%, #0f172a 100%); color: white; padding: 20px 0 40px 0; box-sizing: border-box; }
+        .gate-split { display: flex; gap: 40px; margin-top: 30px; width: 80%; max-width: 900px; }
+        .gate-card { flex: 1; background: #1e293b; border: 2px solid #334155; border-radius: 20px; padding: 35px; text-align: center; cursor: pointer; transition: 0.2s; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        .gate-card:hover { transform: translateY(-5px); border-color: var(--primary); box-shadow: 0 15px 35px rgba(59,130,246,0.3); }
+        .gate-card h2 { font-size: 2rem; color: #38bdf8; margin: 10px 0; }
+        .gate-card p { color: #94a3b8; font-size: 1.05rem; line-height: 1.6; }
+
+        .gate-teacher-controls { margin-top: 25px; background: rgba(30,41,59,0.6); border: 1px solid #334155; padding: 15px 20px; border-radius: 14px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; justify-content: center; }
+        .gate-teacher-controls label { color: #cbd5e1; font-weight: bold; font-size: 0.95rem; }
+        .gate-teacher-controls select { padding: 6px 10px; font-size: 1rem; background: #0f172a; color: white; border: 1px solid #475569; border-radius: 6px; margin-left: 5px; }
+        .gate-teacher-controls select:disabled { opacity: 0.45; cursor: not-allowed; }
+        .gate-teacher-controls button { padding: 8px 14px; font-size: 0.9rem; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; }
+        .btn-rule { background: var(--accent); }
+        .control-locked { opacity: 0.55; cursor: not-allowed; }
+        .room-picker { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; color: #cbd5e1; font-weight: bold; }
+        .room-picker select { min-width: 110px; padding: 8px 10px; font-size: 1rem; background: #0f172a; color: white; border: 1px solid #475569; border-radius: 8px; }
+        .room-picker small { color: #94a3b8; font-weight: normal; }
+        .room-badge { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; border-radius: 999px; background: #082f49; color: #7dd3fc; border: 1px solid #0ea5e9; font-size: 0.95rem; font-weight: 900; white-space: nowrap; }
+        .room-badge.light { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        .big-hand-panel { margin: 0 0 12px 0; background: #0f172a; border: 1px solid #475569; border-radius: 14px; padding: 12px; }
+        .big-hand-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: #cbd5e1; font-weight: bold; flex-wrap: wrap; }
+        .big-hand-hint { color: var(--accent); font-size: 0.85rem; }
+        .big-hand-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        .big-hand-choice { background: #1e293b; color: #cbd5e1; border: 2px solid #334155; border-radius: 10px; padding: 8px 4px; font-weight: bold; cursor: pointer; text-align: center; white-space: nowrap; }
+        .big-hand-choice.active { background: var(--accent); border-color: #fbbf24; color: #0f172a; }
+        .big-hand-choice:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* 게임 방법 모달 */
+        .rule-modal-scroll { max-height: 75vh; overflow-y: auto; text-align: left; color: #334155; }
+        .guide-section { padding: 14px 16px; border-bottom: 1px dashed #fde68a; }
+        .guide-section:last-child { border-bottom: none; }
+        .guide-section h4 { margin: 0 0 8px 0; color: #b45309; font-size: 1rem; }
+        .guide-section p { margin: 6px 0; line-height: 1.7; font-size: 0.9rem; }
+        .score-mini-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.85rem; }
+        .score-mini-table td { padding: 4px 6px; border-bottom: 1px solid #fef3c7; }
+
+        .view-frame { width: 100%; height: 100vh; display: flex; flex-direction: column; padding: 20px 20px 38px 20px; box-sizing: border-box; overflow: hidden; }
+
+        .teacher-grid { display: flex; gap: 20px; flex-grow: 1; height: calc(100vh - 120px); overflow: hidden; }
+        .teacher-left { width: 45%; display: flex; flex-direction: column; gap: 15px; height: 100%; overflow-y: auto; }
+        .teacher-right { width: 55%; background: var(--bg-dark); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; height: 100%; overflow: hidden; box-sizing: border-box; }
+
+        .table-scroll-zone { flex-grow: 1; overflow-y: auto; margin-top: 15px; border-radius: 10px; background: #020617; border: 1px solid #1e293b; }
+        .rank-table { width: 100%; border-collapse: collapse; text-align: center; color: var(--text-light); }
+        .rank-table th { position: sticky; top: 0; background: #1e293b; color: #38bdf8; padding: 12px; font-weight: bold; z-index: 10; }
+        .rank-table td { padding: 12px; border-bottom: 1px solid #1e293b; }
+        .teacher-action-stack { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+        .teacher-mini-btn { background: var(--danger); color: white; border: none; padding: 5px 8px; border-radius: 7px; font-size: 0.75rem; font-weight: bold; cursor: pointer; white-space: nowrap; }
+        .teacher-big-hand-btn { background: #334155; color: #cbd5e1; border: 1px solid #475569; padding: 5px 8px; border-radius: 7px; font-size: 0.75rem; font-weight: bold; cursor: pointer; white-space: nowrap; }
+        .teacher-big-hand-btn.active { background: var(--accent); color: #0f172a; border-color: #fbbf24; }
+
+        .student-layout { display: flex; flex-direction: column; height: 100%; justify-content: space-between; overflow: hidden; }
+        .student-top { height: 12%; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: white; padding: 0 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .student-mid { height: 43%; background: white; border-radius: 16px; padding: 15px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: center; }
+        .student-bot { height: 42%; display: flex; gap: 20px; overflow: hidden; }
+        .bot-left { width: 40%; background: #fee2e2; border: 2px dashed var(--danger); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; box-sizing: border-box; }
+        .bot-right { width: 60%; background: #f1f5f9; border-radius: 16px; padding: 15px; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
+
+        .card-container { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 10px; }
+        .card { background: #f8fafc; border: 3px solid #e2e8f0; border-radius: 12px; padding: 8px 0; cursor: pointer; user-select: none; transition: 0.15s; text-align: center; min-width: 0; }
+        .card.selected { border-color: var(--primary); background-color: #eff6ff; transform: scale(1.02); }
+        .card .emoji { font-size: 1.8rem; }
+        .card .name { font-size: 0.85rem; font-weight: bold; overflow-wrap: anywhere; }
+
+        .team-quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-height: 250px; overflow-y: auto; width: 100%; max-width: 700px; padding: 5px; box-sizing: border-box; }
+        .team-tile { padding: 15px; border-radius: 14px; text-align: center; font-weight: bold; cursor: pointer; border: 2px solid #cbd5e1; box-shadow: 0 2px 6px rgba(0,0,0,0.03); color: #0f172a; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .target-tile-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; overflow-y: auto; flex-grow: 1; padding: 2px; }
+        .target-tile { padding: 10px 0; background: white; border: 2px solid #cbd5e1; border-radius: 10px; text-align: center; font-weight: bold; cursor: pointer; color: #0f172a; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .target-tile.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .trade-step-label { font-size: 0.88rem; font-weight: bold; color:#475569; margin: 4px 0 6px 0; }
+        .trade-code-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1; }
+        .trade-code-row span { font-size: 0.9rem; font-weight: bold; color:#0f172a; white-space: nowrap; }
+        .shout-market-call { width: 100%; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; align-items: stretch; }
+        .shout-call-block, .shout-code-block { min-height: 82px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; box-sizing: border-box; }
+        .shout-call-block { background: rgba(239,68,68,0.08); border: 2px solid rgba(239,68,68,0.28); }
+        .shout-code-block { background: #020617; color: #fef08a; border: 2px solid #334155; }
+        .shout-call-main { font-size: 1.18rem; line-height: 1.1; color: var(--danger); }
+        .shout-code-label { font-size: 0.86rem; color: #cbd5e1; margin-bottom: 4px; }
+        .shout-code-value { font-size: 1.18rem; line-height: 1.1; font-weight: 900; letter-spacing: 0; }
+
+        .ticker-wrap { background: #020617; padding: 10px; border-radius: 10px; display: flex; justify-content: space-around; font-weight: bold; border: 1px solid #1e293b; font-size: 0.95rem; flex-wrap: wrap; gap: 5px; color: white;}
+        .pit-room-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .pit-room-card { background: #1e293b; padding: 12px; border-radius: 12px; border: 1px solid #334155; text-align: center; color: white;}
+        .pit-room-card h3 { margin: 0 0 5px 0; color: #38bdf8; font-size: 1.3rem; }
+        .ready-banner { background: #1e293b; border: 2px solid #ff9f43; color: #ff9f43; padding: 10px; border-radius: 12px; font-size: 1.1rem; font-weight: bold; text-align: center; }
+        .ready-banner.all-set { border-color: var(--success); color: var(--success); background: #064e3b; }
+        .ready-banner.market-live { border-color: #38bdf8; color: #38bdf8; background: #082f49; }
+        .btn { background-color: var(--primary); color: white; border: none; padding: 12px; font-size: 1.1rem; border-radius: 10px; cursor: pointer; font-weight: bold; white-space: nowrap; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-bell { background-color: var(--danger); font-size: 1.5rem; animation: pulse 1.3s infinite; display: none; padding: 15px; width: 100%; }
+        .bear-warning { background-color: #fef2f2 !important; border: 3px solid var(--danger) !important; }
+        .bighand-badge { background: var(--accent); color: #0f172a; padding: 2px 6px; border-radius: 6px; font-size: 0.75rem; font-weight: bold; margin-left: 5px; }
+
+        .result-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+        .result-modal { background: white; padding: 25px; border-radius: 20px; max-width: 500px; width: 85%; text-align: center; color: #334155; }
+        .preboot-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #0f172a; color: white; z-index: 12000; text-align: center; padding: 24px; box-sizing: border-box; }
+        .preboot-box { border: 2px solid #38bdf8; border-radius: 18px; padding: 26px; background: #1e293b; max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.35); }
+        .empty-card-notice { height: 100%; min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #475569; border: 2px dashed #cbd5e1; border-radius: 14px; background: #f8fafc; padding: 18px; box-sizing: border-box; }
+        .empty-card-notice strong { color: #0f172a; font-size: 1.2rem; margin-bottom: 8px; }
+        .empty-card-notice span { line-height: 1.6; }
+        .pulse-wait h2 { animation: softPulse 1.6s ease-in-out infinite; }
+
+        /* ===== 카피라이트 푸터 ===== */
+        .copyright-strip { position: fixed; left: 0; right: 0; bottom: 0; text-align: center; padding: 5px 8px; font-size: 0.72rem; color: rgba(148,163,184,0.85); background: rgba(15,23,42,0.78); z-index: 9000; letter-spacing: 0.2px; pointer-events: none; }
+        .copyright-strip strong { color: #ff9f43; font-weight: 700; }
+        .copyright-strip.light { background: rgba(255,255,255,0.85); color: #64748b; border-top: 1px solid #e2e8f0; }
+        .copyright-inline { display: block; text-align: center; color: #94a3b8; font-size: 0.72rem; margin-top: 10px; }
+
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+        @keyframes softPulse { 0%, 100% { opacity: 0.82; transform: scale(1); } 50% { opacity: 1; transform: scale(1.025); } }
+
+        @media (max-width: 900px) {
+            .gate-container { justify-content: flex-start; padding: 28px 16px; }
+            .gate-container h1 { font-size: 2rem !important; text-align: center; line-height: 1.25; }
+            .gate-split { flex-direction: column; width: 100%; max-width: 560px; gap: 16px; margin-top: 22px; }
+            .gate-card { padding: 24px 18px; border-radius: 16px; }
+            .gate-card h2 { font-size: 1.5rem; }
+            .gate-teacher-controls { width: 100%; max-width: 560px; flex-direction: column; align-items: stretch; gap: 10px; padding: 14px; }
+            .gate-teacher-controls label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+            .gate-teacher-controls select, .gate-teacher-controls button { width: 100%; margin-left: 0; box-sizing: border-box; }
+            .room-picker { width: 100%; align-items: stretch; flex-direction: column; gap: 6px; }
+            .room-picker select { width: 100%; box-sizing: border-box; }
+            .room-badge { width: 100%; box-sizing: border-box; }
+            .big-hand-picker { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+            .view-frame { height: auto; min-height: 100vh; overflow-y: auto; padding: 12px 12px 44px 12px; }
+            .teacher-grid { flex-direction: column; height: auto; overflow: visible; }
+            .teacher-left, .teacher-right { width: 100%; height: auto; overflow: visible; }
+            .teacher-right { min-height: 430px; padding: 12px; border-radius: 14px; }
+            .table-scroll-zone { overflow: auto; }
+            .rank-table { min-width: 760px; font-size: 0.88rem; }
+            .pit-room-grid { grid-template-columns: repeat(2, 1fr); }
+
+            .student-layout { min-height: calc(100vh - 24px); height: auto; gap: 10px; justify-content: flex-start; overflow: visible; }
+            .student-top { height: auto; min-height: 76px; flex-direction: column; align-items: stretch; justify-content: center; padding: 14px; text-align: center; }
+            .student-top h3 { font-size: 1.1rem !important; }
+            .student-mid { height: auto; min-height: 240px; }
+            .student-bot { height: auto; flex-direction: column; gap: 10px; overflow: visible; }
+            .bot-left, .bot-right { width: 100%; min-height: 150px; }
+            .target-tile-grid { max-height: 210px; grid-template-columns: repeat(4, 1fr); }
+            .btn { font-size: 1rem; }
+            .shout-market-call { grid-template-columns: 1fr 1fr; }
+        }
+
+        @media (max-width: 560px) {
+            .card-container { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+            .card { border-width: 2px; border-radius: 10px; padding: 6px 0; }
+            .card .emoji { font-size: 1.45rem; }
+            .card .name { font-size: 0.72rem; }
+            #student-gate-login { padding: 20px 12px !important; box-sizing: border-box; overflow-y: auto; }
+            #student-gate-login h2 { font-size: 1.25rem !important; line-height: 1.3; margin: 0 0 12px 0 !important; text-align: center; }
+            .team-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: none; }
+            .team-tile { padding: 10px 4px; border-radius: 10px; font-size: 0.9rem; }
+            .target-tile { font-size: 0.78rem; padding: 9px 0; }
+            .target-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; }
+            .big-hand-choice { font-size: 0.82rem; padding: 8px 2px; }
+            .btn { font-size: 0.92rem; padding: 10px 8px; }
+            #student-ready-btn, #trade-submit-btn, #trade-cancel-btn { width: 100%; min-width: 0 !important; }
+            .trade-code-row { flex-direction: column; align-items: stretch !important; }
+            #target-pin-input { width: 100% !important; box-sizing: border-box; }
+            .shout-call-main, .shout-code-value { font-size: 1.02rem; }
+            .shout-call-block, .shout-code-block { min-height: 74px; padding: 8px 4px; }
+            .student-mid { min-height: 220px; padding: 10px; }
+            .bot-right { padding: 10px; }
+            .result-modal { width: calc(100% - 32px); padding: 18px; }
+        }
+
+        /* ===== [v9 추가] 420px 이하 (KT 폰 등 좁은 화면) ===== */
+        @media (max-width: 420px) {
+            .student-top h3 { font-size: 0.95rem !important; }
+            .student-top { padding: 10px; }
+            #trade-submit-btn, #trade-cancel-btn, #student-ready-btn { font-size: 0.85rem; padding: 9px 4px; white-space: nowrap; }
+            .btn { font-size: 0.85rem; }
+            .bot-left { padding: 14px 10px; }
+            .bot-left #shout-display-area, .shout-call-main { font-size: 0.95rem !important; line-height: 1.4; }
+            .gate-container h1 { font-size: 1.55rem !important; }
+            .gate-card h2 { font-size: 1.25rem; }
+            .gate-card p { font-size: 0.85rem; }
+            #student-gate-login { padding: 16px 10px !important; }
+            #student-gate-login h2 { font-size: 1.1rem !important; }
+            .team-tile { font-size: 0.82rem; padding: 9px 3px; }
+            .gate-teacher-controls { padding: 12px; }
+            .gate-teacher-controls label { font-size: 0.85rem; }
+            .target-tile { font-size: 0.75rem; padding: 8px 0; }
+            .big-hand-choice { font-size: 0.75rem; }
+            .pit-room-card h3 { font-size: 1.1rem; }
+            .pit-room-card { padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="session-boot-overlay" class="preboot-overlay" style="display: none;">
+    <div class="preboot-box">
+        <div style="font-size:3rem; margin-bottom:10px;">📱</div>
+        <h2 style="margin:0 0 8px 0; color:#38bdf8;">투자자 패드 복구 중...</h2>
+        <p style="margin:0; color:#cbd5e1; line-height:1.6;">새로고침한 계좌로 바로 연결하고 있습니다.</p>
+    </div>
+</div>
+
+<div id="game-over-overlay" class="result-overlay" style="display: none;">
+    <div class="result-modal" style="max-width: 600px; background: #0f172a; color: white; border: 3px solid var(--accent);">
+        <h1 style="color: var(--accent); font-size: 2.2rem; margin: 0 0 5px 0;">🏛️ 광기의 PIT 거래소 폐장 시상식</h1>
+        <p style="color: #94a3b8; margin-bottom: 25px;">오늘 최고의 자산가 투자자 명예의 전당!</p>
+        <div id="podium-display" style="display: flex; justify-content: space-around; align-items: flex-end; margin: 30px 0; min-height: 180px; background:#020617; padding:20px; border-radius:15px; border:1px solid #1e293b;"></div>
+        <button id="reset-btn-teacher" class="btn" style="background-color: var(--primary); width:100%; display:none;" onclick="resetToHomeForce()">🔄 전 데이터 초기화 후 마스터 게이트 복귀</button>
+        <button id="close-btn-student" class="btn" style="background-color: #475569; width:100%; display:none;" onclick="closeGameOverForStudent()">👏 수고하셨습니다 (닫기)</button>
+        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px dashed #475569; color: #94a3b8; font-size: 0.78rem; line-height: 1.6;">
+            🎮 본 게임은 <b style="color:#ff9f43;">청완초등학교 교사 이우진 (Woojin Lee)</b>의 창작물입니다.<br>
+            © 2026 All rights reserved · Licensed under CC BY-NC 4.0
+        </div>
+    </div>
+</div>
+
+<div id="result-modal-overlay" class="result-overlay" style="display: none;">
+    <div class="result-modal">
+        <h2>🔔 라운드 종료 (장 마감)</h2>
+        <p id="modal-winner-desc" style="font-size: 1.1rem; font-weight: bold; line-height: 1.5;"></p>
+        <div id="modal-my-earn" style="font-size: 1.3rem; font-weight: bold; margin: 15px 0; padding: 10px; border-radius: 8px;"></div>
+        <p style="color: #64748b; font-size: 0.9rem;">아래 버튼을 누르면 자동으로 다음 라운드 준비됩니다.</p>
+        <button class="btn" style="background-color: var(--success); width:100%;" onclick="closeResultModalAndGoReady()">👍 정산 확인 및 다음 라운드 준비!</button>
+    </div>
+</div>
+
+<div id="rule-guide-modal" class="result-overlay" style="display: none;">
+    <div class="result-modal" style="max-width: 600px;">
+        <h2 style="color: var(--accent); margin-top: 0;">📖 광기의 PIT 거래소 게임 진행 방법</h2>
+        <div class="rule-modal-scroll" style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px;">
+            <div class="guide-section">
+                <h4>1️⃣ 준비 단계</h4>
+                <p>① 교사와 학생이 첫 화면에서 같은 <b>수업 방 코드</b>를 선택합니다. 방은 최대 10개까지 동시에 분리됩니다.<br>
+                ② 교사가 <b>참여 인원·종료 점수</b>를 설정합니다.<br>
+                ③ 교사는 <b>"교사 시스템"</b> 카드를 눌러 교탁 전광판을 켜고 <b>"학생 입장 열기"</b>를 누릅니다.<br>
+                ④ 학생들은 <b>"학생 터미널"</b> 카드로 들어가 자기 투자자 타일을 선택, 식별 코드 3자리를 입력해 입장합니다.<br>
+                ⑤ 라운드가 끝나면 학생이 결과를 확인하고 <b>"다음 라운드 준비"</b>를 누릅니다.<br>
+                ⑥ 전원 준비되면 교사의 <b>"거래 시작"</b> 버튼이 활성화됩니다.</p>
+            </div>
+            <div class="guide-section">
+                <h4>2️⃣ 카드와 점수</h4>
+                <p>총 8종목 × 9장 + 황금주(✨) 1장 + 거래정지(🛑) 1장. 코너 선언 시 그 종목의 점수가 승자에게 부여됩니다.</p>
+                <table class="score-mini-table">
+                    <tr><td>🚀 우주</td><td><b>100점</b></td><td>💊 바이오</td><td><b>70점</b></td></tr>
+                    <tr><td>🔋 전지</td><td><b>95점</b></td><td>📱 IT</td><td><b>65점</b></td></tr>
+                    <tr><td>🤖 로봇</td><td><b>90점</b></td><td>🎬 콘텐츠</td><td><b>55점</b></td></tr>
+                    <tr><td>🚗 자율</td><td><b>80점</b></td><td>🍔 푸드</td><td><b>50점</b></td></tr>
+                </table>
+                <p>매 라운드 교사가 두 투자자를 <b>큰 손(10장)</b>으로 지정 — 황금주를 받을 확률↑, 더블 코너 기회!</p>
+            </div>
+            <div class="guide-section">
+                <h4>3️⃣ 거래하는 법 (3단계)</h4>
+                <p>① <b>같은 종목</b>(또는 그 종목 + 황금주/거래정지) 카드 1~4장을 터치 → "외침 장터 등록"<br>
+                ② 화면의 <b>내 코드(2자리)</b>를 큰 소리로 외치기. 같은 장 수를 외치는 투자자를 찾기<br>
+                ③ 상대 타일 터치 → 상대가 외친 <b>2자리 코드</b> 입력 → "원격 계약 체결 승인"<br>
+                <b>※ 양쪽이 모두 서로의 코드를 입력해야 거래가 체결됩니다.</b></p>
+            </div>
+            <div class="guide-section">
+                <h4>4️⃣ 승리 조건</h4>
+                <p>• <b>노멀 코너</b>: 같은 종목 9장 → 그 종목 점수 획득<br>
+                • <b>더블 BULL 코너</b>: 9장 + 황금주(✨) → 점수 2배 (큰 손 모둠만 가능)<br>
+                • 거래정지(🛑)는 코너 선언 불가 — 반드시 떠넘기세요<br>
+                • 누군가 누적 점수 <b>종료 점수</b>에 도달하면 자동 시상식</p>
+            </div>
+            <div class="guide-section">
+                <h4>5️⃣ 교사 운영 팁</h4>
+                <p>• 게임 중 참여 인원과 종료 점수는 잠깁니다. 수업이 길어지면 <b>"시장 강제 종결 및 시상식"</b>을 확인 후 사용하세요.<br>
+                • 전광판 상단의 [준비완료]/[대기중]으로 다음 라운드 준비 상태를 파악합니다.<br>
+                • 떠드는 학생은 랭킹표의 <b>🚫 1분퇴장</b> 버튼으로 단속합니다.<br>
+                • 새 게임 시작과 다음 라운드 시작은 실수 방지를 위해 한 번 더 확인합니다.</p>
+            </div>
+            <div class="guide-section">
+                <h4>📜 저작권 안내</h4>
+                <p>본 게임 <b>광기의 PIT 거래소 (Madness of PIT Trading)</b>는<br>
+                <b style="color:#b45309;">청완초등학교 교사 이우진 (Woojin Lee)</b>의 창작물입니다.<br>
+                © 2026 All rights reserved.<br>
+                Licensed under CC BY-NC 4.0 (저작자 표시 + 비상업적 이용)<br>
+                자유로운 교육적 사용은 환영하지만, 저작자 표시는 반드시 유지해 주세요.</p>
+            </div>
+        </div>
+        <button class="btn" style="background-color: #475569; width:100%; margin-top:15px;" onclick="closeRuleGuideModal()">닫기</button>
+    </div>
+</div>
+
+<div id="ban-section" class="gate-container" style="display: none; background: #fee2e2; color: #334155;">
+    <div class="result-modal" style="border: 3px solid var(--danger); padding: 40px 20px;">
+        <span style="font-size: 5rem;">🚫</span>
+        <h2 style="color: var(--danger); margin: 10px 0;">금융 거래 자격 한시적 정지</h2>
+        <p style="font-size: 1.1rem; font-weight: bold; line-height: 1.7; color:#475569;">
+            시장 혼란 야기 또는 지연으로 인해<br>
+            교사에 의해 <span style="color:#b91c1c;">1분간 자격정지</span> 조치되었습니다.
+        </p>
+        <span style="font-size: 2.2rem; color: #b91c1c; font-weight: bold; display:block; margin-top:15px;" id="ban-countdown">60초</span>
+    </div>
+</div>
+
+<div id="gate-section" class="gate-container">
+    <h1 style="font-size: 2.8rem; margin: 0;">🐂📈 광기의 PIT 거래소</h1>
+    <p style="color: var(--accent); font-size: 1.2rem; font-weight: bold; margin: 5px 0 0 0;">— 외쳐라, 바꿔라, 종을 울려라! —</p>
+    <div class="gate-split">
+        <div class="gate-card" onclick="showMode('teacher')">
+            <h2>👨‍🏫 교사 시스템</h2>
+            <p>교탁 대형 TV 전광판 활성화<br>인원 설정 및 거래 제어 타워 가동</p>
+        </div>
+        <div class="gate-card" onclick="enterStudentGate()">
+            <h2>📱 학생 터미널</h2>
+            <p>개인용 스마트 트레이딩 패널<br>실시간 외침 및 원격 계약 체결</p>
+        </div>
+    </div>
+
+    <div class="gate-teacher-controls">
+        <div class="room-picker">
+            <label for="main-room-code">🏫 수업 방 코드</label>
+            <select id="main-room-code" onchange="changeRoomCode(this.value)">
+                <option value="1111">1111번 방</option>
+                <option value="2222">2222번 방</option>
+                <option value="3333">3333번 방</option>
+                <option value="4444">4444번 방</option>
+                <option value="5555">5555번 방</option>
+                <option value="6666">6666번 방</option>
+                <option value="7777">7777번 방</option>
+                <option value="8888">8888번 방</option>
+                <option value="9999">9999번 방</option>
+                <option value="0000">0000번 방</option>
+            </select>
+            <small>교사와 학생이 같은 방을 고르면 한 교실로 연결됩니다.</small>
+        </div>
+        <button class="btn-rule" onclick="openRuleGuideModal()">📖 게임 방법</button>
+    </div>
+    <span class="copyright-inline">© 2026 <b style="color:#ff9f43;">청완초등학교 교사 이우진</b> · Madness of PIT Trading · 무단 복제·재배포 금지</span>
+</div>
+
+<div id="teacher-section" class="view-frame" style="display: none; background: #0f172a;">
+    <div style="display: flex; justify-content: space-between; align-items: center; min-height: 60px; margin-bottom: 10px; gap: 12px; flex-wrap: wrap;">
+        <h1 style="color: #38bdf8; margin: 0; font-size: 1.8rem;">🏛️ 광기의 PIT 거래소 Control Dashboard</h1>
+        <div class="room-badge">🏫 <span id="teacher-room-code">1111</span>번 방</div>
+    </div>
+
+    <div class="teacher-grid">
+        <div class="teacher-left">
+            <div class="ticker-wrap" id="ticker-board"></div>
+            <div id="teacher-ready-banner" class="ready-banner">⏳ 실시간 연결망 모니터링 중...</div>
+            <div style="background: #1e293b; padding: 15px; border-radius: 12px; border: 1px solid #334155; color: white;">
+                <h4 style="margin: 0 0 10px 0; color: #38bdf8;">⚙️ 전광판 제어판</h4>
+                <p style="color:#94a3b8; font-size:0.85rem; margin:0 0 10px 0;">참여 인원과 자동 종료 점수는 여기서 설정합니다. 학생 입장을 열면 잠깁니다.<br>현재 종료 점수: <span id="teacher-end-score-display" style="color:var(--accent); font-weight:bold;">300</span>점</p>
+                <div class="gate-teacher-controls" style="margin: 0 0 12px 0; justify-content: flex-start; background:#0f172a; border-color:#475569;">
+                    <label>👨‍🏫 참여 인원:
+                        <select id="main-total-teams" onchange="updateMaxTeamsOnFly()">
+                            <option value="3">3인</option><option value="4">4인</option>
+                            <option value="5">5인</option><option value="6">6인</option>
+                            <option value="7">7인</option><option value="8" selected>8인</option>
+                        </select>
+                    </label>
+                    <label>🏁 자동 종료 점수:
+                        <select id="main-end-score" onchange="updateEndScoreOnFly()">
+                            <option value="200">200점 (빠른 게임)</option>
+                            <option value="300" selected>300점 (보통)</option>
+                            <option value="500">500점</option>
+                            <option value="700">700점</option>
+                            <option value="1000">1000점</option>
+                        </select>
+                    </label>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+                    <button class="btn" id="teacher-setup-btn" style="flex:1; min-width: 160px; background-color: #475569;" onclick="applySetup()" disabled>학생 입장 열기</button>
+                </div>
+                <div class="big-hand-panel" id="big-hand-panel" style="display:none;">
+                    <div class="big-hand-header">
+                        <span>✨ 큰 손 지정</span>
+                        <span class="big-hand-hint" id="big-hand-count-label">2명 선택</span>
+                    </div>
+                    <div id="big-hand-picker" class="big-hand-picker"></div>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn" id="teacher-next-btn" style="flex:1; min-width: 160px; background-color: #475569;" onclick="nextRound()" disabled>거래 시작</button>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">
+                    <button class="btn" id="teacher-force-end-btn" style="background-color: var(--danger); flex:1; min-width: 190px;" onclick="manualGameOverForce()">🏛️ 수업 종료 및 강제 시상식</button>
+                </div>
+            </div>
+            <div class="pit-room-grid">
+                <div class="pit-room-card"><h3>1장</h3><div id="pit-room-1">-</div></div>
+                <div class="pit-room-card"><h3>2장</h3><div id="pit-room-2">-</div></div>
+                <div class="pit-room-card"><h3>3장</h3><div id="pit-room-3">-</div></div>
+                <div class="pit-room-card"><h3>4장</h3><div id="pit-room-4">-</div></div>
+            </div>
+        </div>
+
+        <div class="teacher-right">
+            <h2 id="winner-announcement" style="color: #f59e0b; font-size: 1.6rem; margin: 0; min-height: 35px; text-align: center;">⏳ 개장 대기 중...</h2>
+            <div class="table-scroll-zone">
+                <table class="rank-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">투자자 지갑 계정</th>
+                            <th style="width: 14%;">운영</th>
+                            <th style="width: 11%;">보유</th>
+                            <th style="width: 13%;">라운드 득실</th>
+                            <th style="width: 13%;">누적 총 자산</th>
+                            <th style="width: 24%;">지갑 내부 (교사용)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rank-board-rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="student-section" class="view-frame" style="display: none;">
+    <div id="student-gate-waiting" class="gate-container pulse-wait" style="position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: 500; background: #0f172a; display: none;">
+        <h2 style="color: var(--accent); font-size: 2rem; text-align: center;" id="waiting-msg-title">⏳ 현재 광기의 PIT 거래소 준비 중...</h2>
+        <div class="room-badge" style="margin-top: 10px;">🏫 <span id="student-waiting-room-code">1111</span>번 방</div>
+        <p style="color: #cbd5e1; font-size: 1.15rem; margin-top: 15px; text-align: center; line-height: 1.8; max-width: 720px;">
+            선생님께서 교탁에서 오늘의 참여 인원을 설정하고 시장을 개장하실 때까지 잠시만 기다려 주세요.<br>
+            개장되는 순간 자동으로 투자자 선택 창이 열립니다!
+        </p>
+        <button class="btn" style="background-color:#475569; margin-top:30px;" onclick="location.reload()">🚪 첫 화면으로 이탈</button>
+    </div>
+
+    <div id="student-gate-login" class="gate-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: 400; background: white; color: #334155; padding: 40px 20px; justify-content: start; display: none;">
+        <h2 style="font-weight: 900; margin-bottom: 20px; font-size: 2rem; color: #0f172a; text-align:center;">📱 투자자 계좌를 터치하여 연동하세요</h2>
+        <div class="room-badge light" style="margin-bottom: 14px;">🏫 <span id="student-login-room-code">1111</span>번 방</div>
+        <div id="team-quick-grid" class="team-quick-grid"></div>
+        <button class="btn" style="background-color: #64748b; margin-top: 20px; width: 250px;" onclick="location.reload()">🚪 메인 게이트 복귀</button>
+    </div>
+
+    <div class="student-layout" id="game-section">
+        <div class="student-top">
+            <h3 id="team-display" style="margin: 0; font-size: 1.3rem;">🏢 투자자 계좌 연결 대기 중</h3>
+            <button id="student-ready-btn" class="btn" style="background-color: var(--accent); padding: 10px 25px; display:none;" onclick="clickStudentReady()">👍 거래 준비 완료!</button>
+            <div id="student-ready-status" style="font-weight:bold; color:var(--success); font-size:1.1rem; display:none;">✅ 거래 대기실 진입 성공!</div>
+        </div>
+
+        <div class="student-mid">
+            <button id="bell-button" class="btn btn-bell" onclick="ringTheBell()">🔔 CORNER 선언! (종치기)</button>
+            <div id="portfolio-card-box" style="height: 100%; display: flex; flex-direction: column; justify-content: center;">
+                <div class="card-container" id="my-portfolio"></div>
+            </div>
+        </div>
+
+        <div class="student-bot">
+            <div class="bot-left" id="shout-parent">
+                <div id="shout-display-area" style="font-size: 1.4rem; font-weight: bold; color: var(--danger);">지갑에서 교환할 단일 종목 카드를 선택 후 장터에 등록하세요.</div>
+            </div>
+            <div class="bot-right">
+                <div style="display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
+                    <button class="btn" id="trade-submit-btn" style="flex:1; min-width: 180px; background-color: var(--success);" onclick="postTrade()">선택 카드로 외침 장터 등록</button>
+                    <button class="btn" id="trade-cancel-btn" style="background-color:#64748b; display:none; flex:1; min-width: 140px;" onclick="cancelTrade()">외침 취소</button>
+                </div>
+                <div id="action-zone" style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; opacity: 0.5; pointer-events: none;">
+                    <div class="trade-step-label">1. 거래할 상대를 먼저 선택하세요</div>
+                    <div class="target-tile-grid" id="target-team-tiles"></div>
+                    <div class="trade-code-row">
+                        <span>2. 상대 코드 2자리 입력</span>
+                        <input type="number" id="target-pin-input" placeholder="상대 코드 2자리" pattern="[0-9]*" inputmode="numeric" style="padding:9px 10px; width:190px; font-size:1.18rem; font-weight:900; text-align:center; border:2px solid #cbd5e1; border-radius:8px; margin:0;">
+                    </div>
+                    <button class="btn" style="background-color:var(--success); padding: 8px; font-size:1rem; margin-top: 5px;" onclick="executeTrade()">원격 주식 계약 체결 승인</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    /* ═══════════════════════════════════════════════════════════════
+       광기의 PIT 거래소 (Madness of PIT Trading)
+       Copyright © 2026 청완초등학교 교사 이우진 (Woojin Lee)
+       All rights reserved · Licensed under CC BY-NC 4.0
+       ═══════════════════════════════════════════════════════════════ */
+    const __COPYRIGHT__ = "© 2026 청완초등학교 교사 이우진 (Woojin Lee). Madness of PIT Trading. All rights reserved.";
+    const __AUTHOR__ = "청완초등학교 교사 이우진";
+    const __LICENSE__ = "CC BY-NC 4.0";
+    try {
+        console.log("%c🐂📈 광기의 PIT 거래소", "color:#ff9f43; font-size:18px; font-weight:bold;");
+        console.log("%c© 2026 청완초등학교 교사 이우진 (Woojin Lee)", "color:#38bdf8; font-weight:bold;");
+        console.log("%cAll rights reserved · Licensed under CC BY-NC 4.0", "color:#94a3b8;");
+        console.log("%c저작자 표시는 반드시 유지해 주세요. 무단 제거는 저작권법 위반입니다.", "color:#ef4444;");
+    } catch(e) {}
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAFJVNSqE2OdVbobIVkwCGc4ErXBLYadiE",
+        databaseURL: "https://class-stock-pit-default-rtdb.firebaseio.com",
+        projectId: "class-stock-pit",
+        appId: "1:254361694558:web:6bd94d08d7f21c4f1c9fcf"
+    };
+    firebase.initializeApp(firebaseConfig); const database = firebase.database();
+    const ROOM_CODES = ['1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '0000'];
+    const DEFAULT_ROOM_CODE = ROOM_CODES[0];
+
+    const MASTER_TEAMS = [
+        { id: 1, name: "떡상", pw: "101" }, { id: 2, name: "대박", pw: "202" },
+        { id: 3, name: "풀매수", pw: "303" }, { id: 4, name: "황금손", pw: "404" },
+        { id: 5, name: "야수", pw: "505" }, { id: 6, name: "단타왕", pw: "606" },
+        { id: 7, name: "익절왕", pw: "707" }, { id: 8, name: "왕개미", pw: "808" }
+    ];
+    const TEAM_COLORS = ['#fee2e2','#fef3c7','#dcfce7','#dbeafe','#ede9fe','#fce7f3','#cffafe','#f1f5f9'];
+    const STOCKS = ['🚀', '🔋', '🤖', '🚗', '💊', '📱', '🎬', '🍔'];
+    const STOCK_NAMES = { '🚀':'우주', '🔋':'전지', '🤖':'로봇', '🚗':'자율', '💊':'바이오', '📱':'IT', '🎬':'콘텐츠', '🍔':'푸드', '✨':'황금주', '🛑':'거래정지' };
+    const STOCK_VALS = { '🚀':100, '🔋':95, '🤖':90, '🚗':80, '💊':70, '📱':65, '🎬':55, '🍔':50 };
+    const BULL = '✨'; const BEAR = '🛑';
+
+    function teamLabel(team) {
+        return team ? `${team.id}(${team.name})` : "";
+    }
+
+    function teamLabelByName(teamName) {
+        const team = MASTER_TEAMS.find(t => t.name === teamName);
+        return team ? teamLabel(team) : teamName;
+    }
+
+    let currentRoomCode = normalizeRoomCode(getRequestedRoomCode());
+    let currentMode = ""; let myName = ""; let myCards = []; let selectedIndices = []; let isMarketClosed = true;
+    let globalMaxTeams = 8; let globalEndScore = 300; let globalBigHands = []; let selectedTargetTeam = "";
+    let globalStatus = "waiting"; let globalEntrySessionId = ""; let globalDealId = ""; let latestPlayersData = {};
+    let pendingBigHands = [];
+    let previousGlobalStatus = "";
+    let isModalOpenThisRound = false; let banTimer = null;
+    let lastSeenTradeTs = null;
+    let tradeWatchBootstrapped = false;
+    let studentSelfListenerRef = null; let watchedTargetRef = null; let watchedTargetName = "";
+    let targetCleanupInProgress = false;
+    let cardRefreshTimers = [];
+    let lastCardClickTs = 0;
+    let lastTargetTileClickTs = 0;
+    let gameConfigListenerRef = null;
+    let playersListenerRef = null;
+
+    function normalizeRoomCode(code) {
+        const roomCode = String(code || '').trim();
+        return ROOM_CODES.includes(roomCode) ? roomCode : DEFAULT_ROOM_CODE;
+    }
+
+    function getSavedRoomCode() {
+        try { return localStorage.getItem('pit_room_code') || DEFAULT_ROOM_CODE; }
+        catch(e) { return DEFAULT_ROOM_CODE; }
+    }
+
+    function getRequestedRoomCode() {
+        try {
+            const queryRoom = new URLSearchParams(window.location.search).get('room');
+            return queryRoom || getSavedRoomCode();
+        } catch(e) {
+            return getSavedRoomCode();
+        }
+    }
+
+    function saveCurrentRoomCode() {
+        try { localStorage.setItem('pit_room_code', currentRoomCode); }
+        catch(e) {}
+    }
+
+    function roomPath(path = "") {
+        const cleanPath = String(path || "").replace(/^\/+/, "");
+        return cleanPath ? `rooms/${currentRoomCode}/${cleanPath}` : `rooms/${currentRoomCode}`;
+    }
+
+    function roomRef(path = "") {
+        return database.ref(roomPath(path));
+    }
+
+    function gameConfigRef(path = "") {
+        const cleanPath = String(path || "").replace(/^\/+/, "");
+        return roomRef(cleanPath ? `game_config/${cleanPath}` : "game_config");
+    }
+
+    function playersRef(path = "") {
+        const cleanPath = String(path || "").replace(/^\/+/, "");
+        return roomRef(cleanPath ? `players/${cleanPath}` : "players");
+    }
+
+    function updateRoom(updates) {
+        const scopedUpdates = {};
+        Object.keys(updates || {}).forEach(key => {
+            scopedUpdates[String(key).replace(/^\/+/, "")] = updates[key];
+        });
+        return roomRef().update(scopedUpdates);
+    }
+
+    function updateRoomLabels() {
+        const roomSelect = document.getElementById('main-room-code');
+        if (roomSelect) roomSelect.value = currentRoomCode;
+        ['teacher-room-code', 'student-waiting-room-code', 'student-login-room-code'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = currentRoomCode;
+        });
+    }
+
+    function detachRoomListeners() {
+        if (gameConfigListenerRef) {
+            gameConfigListenerRef.off();
+            gameConfigListenerRef = null;
+        }
+        if (playersListenerRef) {
+            playersListenerRef.off();
+            playersListenerRef = null;
+        }
+    }
+
+    function changeRoomCode(roomCode) {
+        const nextRoomCode = normalizeRoomCode(roomCode);
+        if (nextRoomCode === currentRoomCode) {
+            updateRoomLabels();
+            return;
+        }
+        currentRoomCode = nextRoomCode;
+        saveCurrentRoomCode();
+        clearSavedStudentSession();
+        latestPlayersData = {};
+        myName = "";
+        myCards = [];
+        selectedIndices = [];
+        selectedTargetTeam = "";
+        updateRoomLabels();
+        if (currentMode) {
+            location.reload();
+            return;
+        }
+        initApp();
+    }
+
+    function openRuleGuideModal() { document.getElementById('rule-guide-modal').style.display = 'flex'; }
+    function closeRuleGuideModal() { document.getElementById('rule-guide-modal').style.display = 'none'; }
+
+    function askForceEndConfirmation() {
+        return confirm("현재 누적 점수 기준으로 즉시 시상식을 열까요?\n\n진행 중인 라운드와 미완료 거래는 모두 마감됩니다.");
+    }
+
+    function getSavedEntrySessionId() {
+        try { return localStorage.getItem('pit_entry_session_id') || ""; }
+        catch(e) { return ""; }
+    }
+
+    function setSavedStudentSession(teamName) {
+        saveCurrentRoomCode();
+        localStorage.setItem('pit_logged_team', teamName);
+        localStorage.setItem('pit_entry_session_id', globalEntrySessionId || "");
+    }
+
+    function clearSavedStudentSession() {
+        localStorage.removeItem('pit_logged_team');
+        localStorage.removeItem('pit_entry_session_id');
+        document.documentElement.classList.remove('has-saved-student-session');
+        document.documentElement.classList.remove('student-session-ready');
+        const boot = document.getElementById('session-boot-overlay');
+        if (boot) boot.style.display = 'none';
+    }
+
+    function showStudentChoiceFromStaleSession(config) {
+        clearSavedStudentSession();
+        if (studentSelfListenerRef) {
+            studentSelfListenerRef.off();
+            studentSelfListenerRef = null;
+        }
+        detachTargetWatch();
+        myCards = [];
+        selectedIndices = [];
+        myName = "";
+        currentMode = "student";
+        document.getElementById('gate-section').style.display = 'none';
+        document.getElementById('teacher-section').style.display = 'none';
+        document.getElementById('student-section').style.display = 'flex';
+        handleStudentStatusChange(config);
+    }
+
+    function initApp() {
+        detachRoomListeners();
+        try {
+            const savedName = localStorage.getItem('pit_logged_team');
+            if (savedName && getSavedRoomCode() !== currentRoomCode) clearSavedStudentSession();
+        } catch(e) {}
+        saveCurrentRoomCode();
+        updateRoomLabels();
+        gameConfigListenerRef = gameConfigRef();
+        gameConfigListenerRef.on('value', (snapshot) => {
+            const config = snapshot.val() || {};
+            const nextStatus = config.status || 'waiting';
+            if (previousGlobalStatus !== nextStatus && (nextStatus === 'waiting' || nextStatus === 'ready_check' || nextStatus === 'ended')) {
+                pendingBigHands = [];
+            }
+            previousGlobalStatus = nextStatus;
+            globalStatus = nextStatus;
+            globalMaxTeams = config.max_teams || 8;
+            globalEndScore = config.end_score || 300;
+            globalBigHands = config.big_hand_teams || [];
+            globalEntrySessionId = config.entry_session_id || "";
+            globalDealId = config.deal_id || "";
+
+            const shouldChooseAccountNow = globalStatus === 'ready_check';
+            if (myName && currentMode === 'student' && globalEntrySessionId && getSavedEntrySessionId() !== globalEntrySessionId) {
+                if (shouldChooseAccountNow) {
+                    showStudentChoiceFromStaleSession(config);
+                } else {
+                    localStorage.setItem('pit_entry_session_id', globalEntrySessionId);
+                }
+            }
+
+            const savedName = localStorage.getItem('pit_logged_team');
+            if (!myName && savedName && currentMode !== 'teacher') {
+                if (globalEntrySessionId && getSavedEntrySessionId() === globalEntrySessionId) {
+                    autoSessionLogin(savedName);
+                } else if (shouldChooseAccountNow) {
+                    showStudentChoiceFromStaleSession(config);
+                }
+            }
+
+            const ts = document.getElementById('main-total-teams');
+            if (ts) ts.value = globalMaxTeams;
+            const es = document.getElementById('main-end-score');
+            if (es) es.value = globalEndScore;
+            const esd = document.getElementById('teacher-end-score-display');
+            if (esd) esd.innerText = globalEndScore;
+            applySetupControlLock(globalStatus !== 'waiting');
+            syncPendingBigHandsFromConfig();
+            renderBigHandPicker();
+
+            if (myName) { buildTargetTilesLayout(); }
+
+            if (globalStatus === 'game_over') {
+                document.getElementById('gate-section').style.display = 'none';
+                document.getElementById('teacher-section').style.display = 'none';
+                document.getElementById('student-section').style.display = 'none';
+                document.getElementById('game-over-overlay').style.display = 'flex';
+                const teacherLike = currentMode === 'teacher' || currentMode === "";
+                document.getElementById('reset-btn-teacher').style.display = teacherLike ? 'block' : 'none';
+                document.getElementById('close-btn-student').style.display = teacherLike ? 'none' : 'block';
+                playersRef().once('value').then((pSnap) => { renderFinalPodiumGraphics(pSnap.val() || {}); });
+                return;
+            }
+
+            if (currentMode === 'teacher') {
+                handleTeacherStatusChange(config);
+                renderTeacherRankAndPit(latestPlayersData);
+            }
+            if (currentMode === 'student') { handleStudentStatusChange(config); }
+        });
+
+        playersListenerRef = playersRef();
+        playersListenerRef.on('value', (pSnap) => {
+            latestPlayersData = pSnap.val() || {};
+            if (currentMode === 'student' && document.getElementById('student-gate-login').style.display === 'flex') {
+                renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
+            }
+            if (currentMode === 'student' && myName && globalStatus === 'playing') {
+                scheduleStudentCardRefresh();
+            }
+            if (currentMode === 'teacher') {
+                renderBigHandPicker();
+                renderTeacherRankAndPit(latestPlayersData);
+            }
+        });
+    }
+
+    function applySetupControlLock(locked) {
+        ['main-total-teams', 'main-end-score'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.disabled = locked;
+            el.classList.toggle('control-locked', locked);
+            el.title = locked ? '학생 입장을 연 뒤에는 바꿀 수 없습니다. 초기화 후 다시 설정하세요.' : '';
+        });
+    }
+
+    function syncPendingBigHandsFromConfig() {
+        if (globalStatus === 'playing') {
+            pendingBigHands = normalizeBigHandSelection(globalMaxTeams, globalBigHands, true);
+            return;
+        }
+        pendingBigHands = normalizeBigHandSelection(globalMaxTeams, pendingBigHands, false);
+    }
+
+    function normalizeBigHandSelection(maxTeams, seed, shouldFill) {
+        const needed = Math.min(2, maxTeams);
+        const seen = new Set();
+        const selected = (seed || []).filter(id => {
+            const valid = Number.isInteger(id) && id >= 1 && id <= maxTeams && !seen.has(id);
+            if (valid) seen.add(id);
+            return valid;
+        }).slice(0, needed);
+        if (shouldFill) {
+            for (let i = 1; selected.length < needed && i <= maxTeams; i++) {
+                if (!seen.has(i)) {
+                    selected.push(i);
+                    seen.add(i);
+                }
+            }
+        }
+        return selected;
+    }
+
+    function renderBigHandPicker() {
+        const panel = document.getElementById('big-hand-panel');
+        const picker = document.getElementById('big-hand-picker');
+        const label = document.getElementById('big-hand-count-label');
+        if (!picker) return;
+        const showPanel = globalStatus === 'ready_check' || globalStatus === 'ended' || globalStatus === 'playing';
+        if (panel) panel.style.display = showPanel ? 'block' : 'none';
+        const editable = canEditBigHands();
+        pendingBigHands = normalizeBigHandSelection(globalMaxTeams, pendingBigHands, false);
+        picker.innerHTML = '';
+        for (let i = 1; i <= globalMaxTeams; i++) {
+            const team = MASTER_TEAMS[i - 1];
+            if (!team) continue;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'big-hand-choice' + (pendingBigHands.includes(i) ? ' active' : '');
+            btn.disabled = !editable;
+            btn.innerText = teamLabel(team);
+            btn.onclick = () => toggleBigHandTeam(i);
+            picker.appendChild(btn);
+        }
+        if (label) {
+            if (globalStatus === 'playing') label.innerText = '이번 라운드 큰 손';
+            else if (editable) label.innerText = `${pendingBigHands.length}/2명 선택`;
+            else if (globalStatus === 'ready_check' || globalStatus === 'ended') label.innerText = '전원 준비 후 지정';
+            else label.innerText = '전원 준비 후 지정';
+        }
+    }
+
+    function toggleBigHandTeam(teamId) {
+        if (!canEditBigHands()) {
+            alert('모든 투자자가 준비 완료한 뒤 큰 손을 지정할 수 있습니다.');
+            return;
+        }
+        if (pendingBigHands.includes(teamId)) {
+            pendingBigHands = pendingBigHands.filter(id => id !== teamId);
+        } else {
+            if (pendingBigHands.length >= Math.min(2, globalMaxTeams)) {
+                alert('큰 손은 한 라운드에 2명만 지정할 수 있습니다.');
+                return;
+            }
+            pendingBigHands.push(teamId);
+        }
+        renderBigHandPicker();
+        if (currentMode === 'teacher') renderTeacherRankAndPit(latestPlayersData);
+    }
+
+    function getChosenBigHandTeams(maxTeams) {
+        pendingBigHands = normalizeBigHandSelection(maxTeams, pendingBigHands, false);
+        if (pendingBigHands.length !== Math.min(2, maxTeams)) {
+            alert('큰 손 투자자 2명을 선택해 주세요.');
+            return null;
+        }
+        return [...pendingBigHands];
+    }
+
+    function getUnreadyTeams(playersData = latestPlayersData) {
+        const unready = [];
+        for (let i = 1; i <= globalMaxTeams; i++) {
+            const tName = MASTER_TEAMS[i-1].name;
+            const player = playersData[tName];
+            const joinedThisSession = player && player.joined && (!globalEntrySessionId || player.joined_session_id === globalEntrySessionId);
+            if (!player || !player.player_name || !joinedThisSession || player.ready !== true) {
+                unready.push(teamLabelByName(tName));
+            }
+        }
+        return unready;
+    }
+
+    function canEditBigHands() {
+        return (globalStatus === 'ready_check' || globalStatus === 'ended') && getUnreadyTeams().length === 0;
+    }
+
+    function autoSessionLogin(savedName) {
+        myName = savedName; currentMode = 'student';
+        document.documentElement.classList.remove('has-saved-student-session');
+        document.documentElement.classList.add('student-session-ready');
+        document.getElementById('session-boot-overlay').style.display = 'none';
+        document.getElementById('gate-section').style.display = 'none';
+        document.getElementById('teacher-section').style.display = 'none';
+        document.getElementById('student-section').style.display = 'flex';
+        document.getElementById('student-gate-login').style.display = 'none';
+        document.getElementById('student-gate-waiting').style.display = 'none';
+        document.getElementById('team-display').innerText = `🏢 내 자산 계좌: ${teamLabelByName(myName)} · ${currentRoomCode}번 방`;
+        buildTargetTilesLayout();
+        renderCardNotice('교사가 게임을 시작해야 카드를 받습니다', '시장 개장 후 내 카드가 자동으로 표시됩니다.');
+        tradeWatchBootstrapped = false;
+        lastSeenTradeTs = null;
+        initStudentSelfListener();
+    }
+
+    function enterStudentGate() {
+        currentMode = "student";
+        document.getElementById('gate-section').style.display = 'none';
+        document.getElementById('teacher-section').style.display = 'none';
+        document.getElementById('student-section').style.display = 'flex';
+        document.getElementById('student-gate-login').style.display = 'none';
+        document.getElementById('student-gate-waiting').style.display = 'flex';
+        gameConfigRef().once('value').then((snap) => {
+            handleStudentStatusChange(snap.val() || {});
+        });
+        playersRef().once('value').then((pSnap) => {
+            latestPlayersData = pSnap.val() || {};
+            renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
+        });
+    }
+
+    function updateMaxTeamsOnFly() {
+        const el = document.getElementById('main-total-teams');
+        if (globalStatus !== 'waiting') {
+            alert('학생 입장을 연 뒤에는 참여 인원을 바꿀 수 없습니다.\n필요하면 초기 게이트에서 전체 초기화 후 다시 설정해 주세요.');
+            el.value = globalMaxTeams;
+            return;
+        }
+        const val = parseInt(el.value);
+        globalMaxTeams = val;
+        pendingBigHands = normalizeBigHandSelection(globalMaxTeams, pendingBigHands, false);
+        renderBigHandPicker();
+        buildTargetTilesLayout();
+        gameConfigRef('max_teams').set(val);
+    }
+
+    function updateEndScoreOnFly() {
+        const el = document.getElementById('main-end-score');
+        if (globalStatus !== 'waiting') {
+            alert('학생 입장을 연 뒤에는 종료 점수를 바꾸지 않도록 잠갔습니다.\n수업을 바로 마치려면 강제 시상식 버튼을 사용해 주세요.');
+            el.value = globalEndScore;
+            return;
+        }
+        const val = parseInt(el.value);
+        if (confirm(`자동 종료 점수를 ${val}점으로 변경하시겠습니까?\n\n이미 이 점수를 넘은 투자자가 있으면 즉시 시상식이 열립니다.`)) {
+            gameConfigRef('end_score').set(val);
+            playersRef().once('value').then((snap) => {
+                const players = snap.val() || {}; let trigger = false;
+                Object.keys(players).forEach(k => { if ((players[k].total_score || 0) >= val) trigger = true; });
+                if (trigger) gameConfigRef('status').set('game_over');
+            });
+        } else {
+            el.value = globalEndScore;
+        }
+    }
+
+    function renderTeamQuickGrid(maxTeams, playersData) {
+        const grid = document.getElementById('team-quick-grid'); if (!grid) return; grid.innerHTML = '';
+        for(let i = 1; i <= maxTeams; i++) {
+            const teamInfo = MASTER_TEAMS[i-1]; if (!teamInfo) continue;
+            const player = playersData[teamInfo.name];
+            const isClaimed = player && player.joined && (!globalEntrySessionId || player.joined_session_id === globalEntrySessionId);
+            if (isClaimed) continue;
+            const tile = document.createElement('div'); tile.className = 'team-tile';
+            tile.style.background = TEAM_COLORS[(i-1) % TEAM_COLORS.length];
+            tile.innerHTML = `<div style="font-size:1.2rem;">${teamLabel(teamInfo)}</div><div style="font-size:0.8rem; color:#64748b; margin-top:4px; font-weight:normal;">식별코드: ${teamInfo.pw}</div>`;
+            tile.onclick = () => quickStudentEntry(teamInfo); grid.appendChild(tile);
+        }
+        if (!grid.children.length) {
+            grid.innerHTML = `<div style="grid-column:1 / -1; padding:20px; color:#64748b; font-weight:bold; text-align:center;">사용 가능한 투자자 계좌가 없습니다.</div>`;
+        }
+    }
+
+    function quickStudentEntry(teamInfo) {
+        const inputCode = prompt(`[${teamLabel(teamInfo)}]의 고유 식별 코드 3자리를 입력하세요:`);
+        if(teamInfo.pw !== inputCode) return alert('식별 코드가 일치하지 않습니다!');
+        playersRef(teamInfo.name).update({
+            player_name: teamInfo.name, joined: true, joined_session_id: globalEntrySessionId || "", ready: false
+        });
+        setSavedStudentSession(teamInfo.name);
+        autoSessionLogin(teamInfo.name);
+        if (globalStatus === 'playing' || globalStatus === 'ready_check') { handleStudentStatusChange({ status: globalStatus }); }
+    }
+
+    function ensureMyPlayerClaim() {
+        const info = MASTER_TEAMS.find(t => t.name === myName);
+        if (!info || info.id > globalMaxTeams) {
+            clearSavedStudentSession();
+            alert('오늘 참여 인원에 포함되지 않은 계좌입니다. 첫 화면에서 다시 선택해 주세요.');
+            location.reload();
+            return;
+        }
+        playersRef(myName).update({ player_name: myName, joined: true, joined_session_id: globalEntrySessionId || "" });
+    }
+
+    function buildTargetTilesLayout() {
+        const tileContainer = document.getElementById('target-team-tiles'); if (!tileContainer) return;
+        tileContainer.innerHTML = '';
+        for(let i = 1; i <= globalMaxTeams; i++) {
+            const targetInfo = MASTER_TEAMS[i-1]; if (!targetInfo) continue;
+            if (targetInfo.name === myName) continue;
+            const tile = document.createElement('div');
+            tile.className = 'target-tile'; tile.innerText = teamLabel(targetInfo);
+            tile.onclick = () => {
+                const now = Date.now();
+                if (now - lastTargetTileClickTs < 250) return;
+                lastTargetTileClickTs = now;
+                selectTargetTeamTile(targetInfo.name, tile);
+            };
+            tileContainer.appendChild(tile);
+        }
+    }
+
+    function selectTargetTeamTile(teamName, element) {
+        document.querySelectorAll('.target-tile').forEach(el => el.classList.remove('active'));
+        element.classList.add('active'); selectedTargetTeam = teamName;
+    }
+
+    function showMode(mode) {
+        currentMode = mode;
+        document.getElementById('gate-section').style.display = 'none';
+        if(mode === 'teacher') {
+            document.getElementById('teacher-section').style.display = 'flex';
+            renderStaticTicker();
+            gameConfigRef().once('value').then((snap) => { handleTeacherStatusChange(snap.val() || {}); });
+            playersRef().once('value').then((snap) => {
+                latestPlayersData = snap.val() || {};
+                renderTeacherRankAndPit(latestPlayersData);
+            });
+        }
+    }
+
+    function renderStaticTicker() {
+        const board = document.getElementById('ticker-board'); board.innerHTML = '';
+        STOCKS.forEach(s => {
+            const div = document.createElement('div'); div.className = 'ticker-item';
+            div.innerHTML = `<span>${s} ${STOCK_NAMES[s]}</span><span style="color:#38bdf8; margin-left:3px;">${STOCK_VALS[s]}점</span>`;
+            board.appendChild(div);
+        });
+    }
+
+    function buildAndShuffleDeck(maxTeams) {
+        let deck = [];
+        for(let i=0; i<maxTeams; i++) { for(let j=0; j<9; j++) { deck.push(STOCKS[i]); } }
+        deck.push(BULL); deck.push(BEAR);
+        for (let i = deck.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [deck[i], deck[j]] = [deck[j], deck[i]];
+        }
+        return deck;
+    }
+
+    function applySetup() {
+        const activeGame = globalStatus === 'playing' || globalStatus === 'ended';
+        const confirmMsg = activeGame
+            ? "새 게임을 시작하면 현재 점수, 손패, 미완료 거래가 모두 초기화됩니다.\n\n정말 새 게임으로 다시 시작할까요?"
+            : "오늘의 참여 인원과 종료 점수를 확정하고 학생 입장을 열까요?\n\n학생들은 계좌 선택 후 준비 완료 버튼을 누릅니다.";
+        if (!confirm(confirmMsg)) return;
+
+        const maxTeams = parseInt(document.getElementById('main-total-teams').value);
+        const endScore = parseInt(document.getElementById('main-end-score').value);
+        const entrySessionId = Date.now().toString();
+        globalEntrySessionId = entrySessionId;
+        pendingBigHands = [];
+        const playersPayload = {};
+        for(let i = 1; i <= maxTeams; i++) {
+            const tName = MASTER_TEAMS[i-1].name;
+            playersPayload[tName] = {
+                player_name: tName, joined: false, joined_session_id: "", cards: [], trade_count: 0, pin_code: "",
+                offer_cards: null, round_earn: 0, total_score: 0,
+                ready: false, ban_until: null, target_team: "", typed_pin: "",
+                last_trade: null, cards_deal_id: ""
+            };
+        }
+        playersRef().set(playersPayload).then(() => {
+            return gameConfigRef().update({
+                max_teams: maxTeams, end_score: endScore, status: 'ready_check',
+                winner: "", corner_type: "", winning_stock: "",
+                score_applied: false, big_hand_teams: [], entry_session_id: entrySessionId, deal_id: ""
+            });
+        });
+    }
+
+    function nextRound() {
+        if (globalStatus === 'ready_check' || globalStatus === 'ended') {
+            if (getUnreadyTeams().length > 0) {
+                alert('아직 준비 완료하지 않은 투자자가 있습니다.');
+                return;
+            }
+            if (!getChosenBigHandTeams(globalMaxTeams)) return;
+            if (!confirm("전원 준비가 끝났습니다. 거래를 시작할까요?")) return;
+            startPreparedRound();
+            return;
+        }
+    }
+
+    function startPreparedRound() {
+        const bigHandTeams = getChosenBigHandTeams(globalMaxTeams);
+        if (!bigHandTeams) return;
+        const dealId = Date.now().toString();
+        globalDealId = dealId;
+        const deck = buildAndShuffleDeck(globalMaxTeams);
+        const updates = {
+            '/game_config/status': 'playing',
+            '/game_config/winner': '',
+            '/game_config/corner_type': '',
+            '/game_config/winning_stock': '',
+            '/game_config/score_applied': false,
+            '/game_config/big_hand_teams': bigHandTeams,
+            '/game_config/deal_id': dealId
+        };
+        for(let i = 1; i <= globalMaxTeams; i++) {
+            const tName = MASTER_TEAMS[i-1].name;
+            const count = bigHandTeams.includes(i) ? 10 : 9;
+            const hand = deck.splice(0, count);
+            updates['/players/' + tName + '/cards'] = hand;
+            updates['/players/' + tName + '/cards_deal_id'] = dealId;
+            updates['/players/' + tName + '/ready'] = false;
+            updates['/players/' + tName + '/trade_count'] = 0;
+            updates['/players/' + tName + '/pin_code'] = "";
+            updates['/players/' + tName + '/offer_cards'] = null;
+            updates['/players/' + tName + '/round_earn'] = 0;
+            updates['/players/' + tName + '/target_team'] = "";
+            updates['/players/' + tName + '/typed_pin'] = "";
+            updates['/players/' + tName + '/last_trade'] = null;
+        }
+        updateRoom(updates);
+    }
+
+    function clickStudentReady() {
+        if (globalStatus !== 'ready_check' && globalStatus !== 'ended') {
+            alert('준비 대기 상태에서만 준비 완료 버튼을 누를 수 있습니다.');
+            return;
+        }
+        playersRef(myName).update({ ready: true });
+        document.getElementById('student-ready-btn').style.display = 'none';
+        document.getElementById('student-ready-status').style.display = 'block';
+    }
+
+    function renderCurrentStudentCardsFromCache() {
+        if (!myName || globalStatus !== 'playing') return false;
+        const cached = latestPlayersData[myName] || {};
+        const cards = Array.isArray(cached.cards) ? cached.cards : myCards;
+        if (globalDealId && cached.cards_deal_id !== globalDealId) return false;
+        if (Array.isArray(cards) && cards.length) {
+            myCards = cards;
+            if ((cached.trade_count || 0) === 0) clearTradeUI();
+            renderPortfolio();
+            return true;
+        }
+        return false;
+    }
+
+    function fetchAndRenderCurrentStudentCards() {
+        if (!myName || globalStatus !== 'playing') return;
+        playersRef(myName).once('value').then((snap) => {
+            const data = snap.val() || {};
+            const cards = data.cards;
+            if (globalDealId && data.cards_deal_id !== globalDealId) return;
+            if (Array.isArray(cards) && cards.length && globalStatus === 'playing') {
+                myCards = cards;
+                if ((data.trade_count || 0) === 0) clearTradeUI();
+                renderPortfolio();
+            }
+        });
+    }
+
+    function scheduleStudentCardRefresh() {
+        cardRefreshTimers.forEach(timer => clearTimeout(timer));
+        cardRefreshTimers = [];
+        if (!myName || globalStatus !== 'playing') return;
+        [0, 120, 300, 650, 1100, 1700].forEach(delay => {
+            const timer = setTimeout(() => {
+                if (!myName || globalStatus !== 'playing') return;
+                if (!renderCurrentStudentCardsFromCache()) {
+                    fetchAndRenderCurrentStudentCards();
+                }
+            }, delay);
+            cardRefreshTimers.push(timer);
+        });
+    }
+
+    function setTradeAreaVisible(visible) {
+        const tradeArea = document.querySelector('.student-bot');
+        if (!tradeArea) return;
+        tradeArea.style.display = visible ? 'flex' : 'none';
+    }
+
+    function renderCardNotice(title, body) {
+        const container = document.getElementById('my-portfolio');
+        const box = document.getElementById('portfolio-card-box');
+        if (!container || !box) return;
+        box.className = "";
+        container.innerHTML = `<div class="empty-card-notice" style="grid-column:1 / -1;"><strong>${title}</strong><span>${body}</span></div>`;
+        document.getElementById('bell-button').style.display = 'none';
+        setTradeAreaVisible(false);
+    }
+
+    function renderPortfolio() {
+        const container = document.getElementById('my-portfolio'); const box = document.getElementById('portfolio-card-box');
+        container.innerHTML = '';
+        if (globalStatus !== 'playing') {
+            renderCardNotice('시작 대기중입니다.', '시작하면 카드가 보입니다.');
+            return;
+        }
+        if (!myCards || myCards.length === 0) {
+            renderCardNotice('교사가 게임을 시작해야 카드를 받습니다', '시장 개장 후 내 카드가 자동으로 표시됩니다.');
+            return;
+        }
+        setTradeAreaVisible(globalStatus === 'playing' && !isMarketClosed);
+        if(myCards.includes(BEAR)) { box.className = "bear-warning"; } else { box.className = ""; }
+        const sortedCards = [...myCards].sort(); myCards = sortedCards;
+        sortedCards.forEach((card, index) => {
+            const div = document.createElement('div'); div.className = `card ${selectedIndices.includes(index) ? 'selected' : ''}`;
+            div.innerHTML = `<div class="emoji">${card}</div><div class="name">${STOCK_NAMES[card]}</div>`;
+            div.onclick = () => {
+                const now = Date.now();
+                if (now - lastCardClickTs < 250) return;
+                lastCardClickTs = now;
+                if(isMarketClosed) return;
+                if(selectedIndices.includes(index)) { selectedIndices = selectedIndices.filter(i => i !== index); }
+                else { if(selectedIndices.length >= 4) return alert('최대 4장까지만 묶어 팔 수 있습니다!'); selectedIndices.push(index); }
+                renderPortfolio();
+            }; container.appendChild(div);
+        });
+        checkCornerCondition();
+    }
+
+    function checkCornerCondition() {
+        const bellBtn = document.getElementById('bell-button');
+        if(isMarketClosed || myCards.includes(BEAR)) { bellBtn.style.display = 'none'; return; }
+        const counts = {}; myCards.forEach(c => { if (c !== BULL && c !== BEAR) counts[c] = (counts[c] || 0) + 1; });
+        let maxCount = 0; let mainStock = "";
+        Object.keys(counts).forEach(c => { if (counts[c] > maxCount) { maxCount = counts[c]; mainStock = c; } });
+        const isNormalCorner = maxCount === 9;
+        const isBullCorner = maxCount === 8 && myCards.includes(BULL);
+        const isDoubleCorner = maxCount === 9 && myCards.includes(BULL);
+        if(isNormalCorner || isBullCorner || isDoubleCorner) {
+            bellBtn.style.display = 'block';
+            if(isDoubleCorner) bellBtn.innerText = "🔥 DOUBLE BULL CORNER 선언!! (2배) 🔥";
+            else bellBtn.innerText = `🔔 CORNER 선언! [${STOCK_NAMES[mainStock] || mainStock} 독점완료]`;
+        } else { bellBtn.style.display = 'none'; }
+    }
+
+    function ringTheBell() {
+        const counts = {}; myCards.forEach(c => { if (c !== BULL && c !== BEAR) counts[c] = (counts[c] || 0) + 1; });
+        let maxCount = 0; let targetStock = "";
+        Object.keys(counts).forEach(c => { if (counts[c] > maxCount) { maxCount = counts[c]; targetStock = c; } });
+        const type = (maxCount === 9 && myCards.includes(BULL)) ? "double" : "normal";
+        gameConfigRef().update({ status: 'ended', winner: myName, corner_type: type, winning_stock: targetStock });
+    }
+
+    function postTrade() {
+        if(isMarketClosed || globalStatus !== 'playing') return alert('시장이 열려 있을 때만 거래할 수 있습니다.');
+        if(selectedIndices.length === 0) return alert('카드를 선택하세요!');
+        const activeCards = selectedIndices.map(idx => myCards[idx]);
+        const normalCards = activeCards.filter(c => c !== BULL && c !== BEAR);
+        if(normalCards.length > 0 && !normalCards.every(c => c === normalCards[0])) {
+            return alert('⚠️ 서로 다른 종목은 묶을 수 없어요! (같은 종목 또는 황금주/거래정지 포함만 가능)');
+        }
+        const tradeCount = selectedIndices.length;
+        const pinCode = Math.floor(10 + Math.random() * 90).toString();
+        playersRef(myName).update({
+            trade_count: tradeCount, pin_code: pinCode, offer_cards: activeCards,
+            target_team: "", typed_pin: ""
+        });
+
+        const shoutBox = document.getElementById('shout-display-area');
+        const krCount = ["영", "한 장!", "두 장!", "세 장!", "네 장!"][tradeCount];
+        shoutBox.innerHTML = `
+            <div class="shout-market-call">
+                <div class="shout-call-block">
+                    <div class="shout-code-label">📢 외침</div>
+                    <div class="shout-call-main">"${krCount} ${krCount}"<br>외치세요!</div>
+                </div>
+                <div class="shout-code-block">
+                    <div class="shout-code-label">🤝 내 코드</div>
+                    <div class="shout-code-value">${pinCode}</div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('action-zone').style.opacity = "1";
+        document.getElementById('action-zone').style.pointerEvents = "auto";
+        document.getElementById('trade-submit-btn').style.display = 'none';
+        document.getElementById('trade-cancel-btn').style.display = 'block';
+    }
+
+    function cancelTrade() {
+        playersRef(myName).update({
+            trade_count: 0, pin_code: "", offer_cards: null,
+            target_team: "", typed_pin: ""
+        }).then(() => {
+            detachTargetWatch();
+            clearTradeUI();
+            renderPortfolio();
+        });
+    }
+
+    async function executeTrade() {
+        const targetTeam = selectedTargetTeam;
+        const inputPin = document.getElementById('target-pin-input').value.trim();
+        if(!targetTeam || !inputPin) return alert('상대 타일을 누르고 상대방 외침 코드 2자리를 기입하세요.');
+
+        await playersRef(myName).update({ target_team: targetTeam, typed_pin: inputPin });
+
+        const targetSnap = await playersRef(targetTeam).get();
+        const targetData = targetSnap.val();
+        const mySnap = await playersRef(myName).get();
+        const myData = mySnap.val();
+
+        if (myData && myData.last_trade && myData.last_trade.partner === targetTeam && (myData.trade_count || 0) === 0) {
+            detachTargetWatch();
+            clearTradeUI();
+            return;
+        }
+
+        if (!targetData || targetData.trade_count === 0 || !myData || myData.trade_count === 0) {
+            cleanupStaleTarget('⚠️ 상대 투자자가 외침을 취소했거나 다른 거래를 끝냈습니다. 다시 골라주세요.');
+            return;
+        }
+        if (targetData.target_team && targetData.target_team !== myName) {
+            cleanupStaleTarget('⚠️ 상대 투자자가 다른 사람과 거래를 진행 중입니다. 다시 골라주세요.');
+            return;
+        }
+
+        if(targetData.target_team === myName && targetData.typed_pin === myData.pin_code &&
+           myData.typed_pin === targetData.pin_code && myData.trade_count === targetData.trade_count &&
+           Array.isArray(targetData.offer_cards) && targetData.offer_cards.length === myData.trade_count) {
+
+            let myNewCards = [...myCards];
+            const mySelected = selectedIndices.map(idx => myCards[idx]);
+            selectedIndices.slice().sort((a,b) => b-a).forEach(idx => myNewCards.splice(idx, 1));
+
+            let targetNewCards = [...targetData.cards];
+            const targetSelected = [...targetData.offer_cards];
+            for (const card of targetSelected) {
+                const i = targetNewCards.indexOf(card);
+                if (i !== -1) targetNewCards.splice(i, 1);
+            }
+            myNewCards = myNewCards.concat(targetSelected);
+            targetNewCards = targetNewCards.concat(mySelected);
+
+            const tradeId = Date.now();
+            const atomicUpdates = {};
+            atomicUpdates['/players/' + myName + '/cards'] = myNewCards;
+            atomicUpdates['/players/' + myName + '/trade_count'] = 0;
+            atomicUpdates['/players/' + myName + '/pin_code'] = "";
+            atomicUpdates['/players/' + myName + '/offer_cards'] = null;
+            atomicUpdates['/players/' + myName + '/target_team'] = "";
+            atomicUpdates['/players/' + myName + '/typed_pin'] = "";
+            atomicUpdates['/players/' + myName + '/last_trade'] = { partner: targetTeam, ts: tradeId };
+            atomicUpdates['/players/' + targetTeam + '/cards'] = targetNewCards;
+            atomicUpdates['/players/' + targetTeam + '/trade_count'] = 0;
+            atomicUpdates['/players/' + targetTeam + '/pin_code'] = "";
+            atomicUpdates['/players/' + targetTeam + '/offer_cards'] = null;
+            atomicUpdates['/players/' + targetTeam + '/target_team'] = "";
+            atomicUpdates['/players/' + targetTeam + '/typed_pin'] = "";
+            atomicUpdates['/players/' + targetTeam + '/last_trade'] = { partner: myName, ts: tradeId };
+
+            updateRoom(atomicUpdates).then(() => {
+                detachTargetWatch();
+                clearTradeUI();
+            });
+        } else {
+            watchTargetTeam(targetTeam);
+            alert("📡 내 서명이 등록되었습니다.\n상대도 내 코드를 입력하면 자동 체결됩니다.");
+        }
+    }
+
+    function clearTargetUIOnly() {
+        selectedTargetTeam = "";
+        document.querySelectorAll('.target-tile').forEach(el => el.classList.remove('active'));
+        const input = document.getElementById('target-pin-input');
+        if (input) input.value = "";
+    }
+
+    function clearTradeUI() {
+        selectedIndices = []; clearTargetUIOnly();
+        document.getElementById('shout-display-area').innerText = '지갑에서 교환할 단일 종목 카드를 선택 후 장터에 등록하세요.';
+        document.getElementById('action-zone').style.opacity = "0.5";
+        document.getElementById('action-zone').style.pointerEvents = "none";
+        document.getElementById('trade-submit-btn').style.display = 'block';
+        document.getElementById('trade-cancel-btn').style.display = 'none';
+    }
+
+    function detachTargetWatch() {
+        if (watchedTargetRef) {
+            watchedTargetRef.off();
+            watchedTargetRef = null;
+            watchedTargetName = "";
+        }
+    }
+
+    function watchCurrentTarget(data) {
+        if (!data || !data.target_team || !data.trade_count) {
+            detachTargetWatch();
+            return;
+        }
+        watchTargetTeam(data.target_team);
+    }
+
+    function watchTargetTeam(teamName) {
+        if (!teamName || watchedTargetName === teamName) return;
+        detachTargetWatch();
+        watchedTargetName = teamName;
+        watchedTargetRef = playersRef(teamName);
+        watchedTargetRef.on('value', (snap) => {
+            if (targetCleanupInProgress || globalStatus !== 'playing') return;
+            const targetData = snap.val() || {};
+            if (!targetData.player_name || (targetData.trade_count || 0) === 0 || (targetData.target_team && targetData.target_team !== myName)) {
+                handleWatchedTargetChanged(teamName);
+            }
+        });
+    }
+
+    async function handleWatchedTargetChanged(teamName) {
+        if (targetCleanupInProgress || !myName) return;
+        const mySnap = await playersRef(myName).get();
+        const myData = mySnap.val() || {};
+        if (!myData.trade_count || !myData.target_team || myData.target_team !== teamName) {
+            detachTargetWatch();
+            clearTargetUIOnly();
+            return;
+        }
+        if (myData.last_trade && myData.last_trade.partner === teamName) {
+            detachTargetWatch();
+            clearTargetUIOnly();
+            return;
+        }
+        cleanupStaleTarget('⚠️ 상대 투자자의 거래 상태가 바뀌었습니다. 다시 골라주세요.');
+    }
+
+    function cleanupStaleTarget(message) {
+        if (targetCleanupInProgress || !myName) return;
+        targetCleanupInProgress = true;
+        playersRef(myName).update({ target_team: "", typed_pin: "" }).then(() => {
+            detachTargetWatch();
+            clearTargetUIOnly();
+            targetCleanupInProgress = false;
+            if (message) alert(message);
+        }).catch(() => {
+            targetCleanupInProgress = false;
+        });
+    }
+
+    function initStudentSelfListener() {
+        if (studentSelfListenerRef) studentSelfListenerRef.off();
+        studentSelfListenerRef = playersRef(myName);
+        studentSelfListenerRef.on('value', (snapshot) => {
+            const data = snapshot.val() || {};
+
+            if (data.ban_until && data.ban_until > Date.now()) {
+                document.getElementById('game-section').style.display = 'none';
+                document.getElementById('ban-section').style.display = 'flex';
+                clearInterval(banTimer);
+                banTimer = setInterval(() => {
+                    const remain = Math.max(0, Math.round((data.ban_until - Date.now()) / 1000));
+                    document.getElementById('ban-countdown').innerText = remain + "초";
+                    if (remain <= 0) { clearInterval(banTimer); playersRef(myName).update({ ban_until: null }); }
+                }, 1000);
+                return;
+            } else {
+                document.getElementById('ban-section').style.display = 'none';
+            }
+
+            if (!tradeWatchBootstrapped) {
+                lastSeenTradeTs = (data.last_trade && data.last_trade.ts) ? data.last_trade.ts : 0;
+                tradeWatchBootstrapped = true;
+            } else if (data.last_trade && data.last_trade.ts) {
+                if (data.last_trade.ts > (lastSeenTradeTs || 0)) {
+                    lastSeenTradeTs = data.last_trade.ts;
+                    alert(`📈 [${teamLabelByName(data.last_trade.partner)}]와 거래가 체결되었습니다! 손패를 확인하세요.`);
+                }
+            }
+
+            updateStudentReadyUI(data);
+            watchCurrentTarget(data);
+
+            const isCurrentDealCards = !globalDealId || data.cards_deal_id === globalDealId;
+            if(data.cards && data.cards.length && isCurrentDealCards) {
+                myCards = data.cards;
+                if ((data.trade_count || 0) === 0) { clearTradeUI(); }
+                if (globalStatus === 'playing') {
+                    renderPortfolio();
+                } else {
+                    renderCardNotice('시작 대기중입니다.', '시작하면 카드가 보입니다.');
+                }
+            } else {
+                myCards = [];
+                if ((data.trade_count || 0) === 0) { clearTradeUI(); }
+                if (globalStatus === 'playing') {
+                    scheduleStudentCardRefresh();
+                } else {
+                    renderCardNotice('교사가 게임을 시작해야 카드를 받습니다', '시장 개장 후 내 카드가 자동으로 표시됩니다.');
+                }
+            }
+
+            if (data.ready === true) {
+                document.getElementById('student-ready-btn').style.display = 'none';
+                document.getElementById('student-ready-status').style.display = 'block';
+            } else {
+                updateStudentReadyUI(data);
+            }
+        });
+    }
+
+    function updateStudentReadyUI(data) {
+        const btn = document.getElementById('student-ready-btn');
+        const status = document.getElementById('student-ready-status');
+        if (!btn || !status) return;
+        if (globalStatus === 'ready_check' || globalStatus === 'ended') {
+            if (data.ready) {
+                btn.style.display = 'none';
+                status.style.display = 'block';
+                status.innerText = '✅ 거래 대기실 진입 성공!';
+            } else {
+                btn.style.display = 'block';
+                btn.innerText = '👍 거래 준비 완료!';
+                status.style.display = 'none';
+            }
+        } else {
+            btn.style.display = 'none';
+            status.style.display = 'none';
+        }
+    }
+
+    function handleStudentStatusChange(config) {
+        const status = config.status || 'waiting';
+        globalStatus = status;
+        const tradeBtn = document.getElementById('trade-submit-btn');
+
+        if (status === 'playing') {
+            document.getElementById('student-gate-waiting').style.display = 'none';
+            if (!myName) {
+                document.getElementById('student-gate-login').style.display = 'flex';
+                renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
+            } else {
+                document.getElementById('student-gate-login').style.display = 'none';
+                ensureMyPlayerClaim();
+            }
+            isMarketClosed = false;
+            if (tradeBtn) tradeBtn.disabled = false;
+            document.getElementById('result-modal-overlay').style.display = 'none';
+            isModalOpenThisRound = false;
+            updateStudentReadyUI({});
+            if (myName) scheduleStudentCardRefresh();
+        } else if (status === 'ready_check') {
+            document.getElementById('student-gate-waiting').style.display = 'none';
+            if (!myName) {
+                document.getElementById('student-gate-login').style.display = 'flex';
+                renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
+            } else {
+                document.getElementById('student-gate-login').style.display = 'none';
+                ensureMyPlayerClaim();
+                renderCardNotice('시작 대기중입니다.', '시작하면 카드가 보입니다.');
+            }
+            isMarketClosed = true;
+            setTradeAreaVisible(false);
+            if (tradeBtn) tradeBtn.disabled = true;
+            document.getElementById('result-modal-overlay').style.display = 'none';
+            isModalOpenThisRound = false;
+            updateStudentReadyUI(myName ? (latestPlayersData[myName] || {}) : {});
+        } else if (status === 'ended' && config.winner) {
+            document.getElementById('student-gate-waiting').style.display = 'none';
+            document.getElementById('student-gate-login').style.display = 'none';
+            isMarketClosed = true;
+            setTradeAreaVisible(false);
+            if (tradeBtn) tradeBtn.disabled = true;
+            if (config.score_applied && !isModalOpenThisRound && myName !== "") {
+                triggerRoundResultModal(config.winner, config.corner_type, config.winning_stock);
+            }
+        } else {
+            isMarketClosed = true;
+            setTradeAreaVisible(false);
+            if (tradeBtn) tradeBtn.disabled = true;
+            document.getElementById('student-gate-login').style.display = 'none';
+            if (myName) {
+                document.getElementById('student-gate-waiting').style.display = 'none';
+                renderCardNotice('교사가 게임을 시작해야 카드를 받습니다', '선생님이 새 게임을 개장하면 내 카드가 자동으로 표시됩니다.');
+            } else {
+                document.getElementById('student-gate-waiting').style.display = 'flex';
+            }
+            updateStudentReadyUI({});
+        }
+    }
+
+    function triggerRoundResultModal(winner, type, stock) {
+        isModalOpenThisRound = true;
+        const overlay = document.getElementById('result-modal-overlay');
+        const stockText = STOCK_NAMES[stock] || stock;
+        const winnerLabel = teamLabelByName(winner);
+        let mainMsg = `🎉 [${winnerLabel}] 투자자가<br><span style="color:var(--primary); font-size:1.4rem;">${stockText} 독점(CORNER)</span> 성공!`;
+        if (type === 'double') mainMsg = `🔥 [${winnerLabel}] 투자자가<br><span style="color:var(--danger); font-size:1.4rem;">DOUBLE BULL CORNER (자산 2배)</span> 폭발! 🔥`;
+        document.getElementById('modal-winner-desc').innerHTML = mainMsg;
+
+        playersRef(myName).once('value').then((snap) => {
+            const p = snap.val() || {}; const earn = p.round_earn || 0;
+            const earnBox = document.getElementById('modal-my-earn');
+            if (earn >= 0) {
+                earnBox.style.backgroundColor = "#dcfce7"; earnBox.style.color = "#15803d";
+                earnBox.innerText = `📈 라운드 변동: +${earn} 자산`;
+            } else {
+                earnBox.style.backgroundColor = "#fee2e2"; earnBox.style.color = "#b91c1c";
+                earnBox.innerText = `📉 라운드 페널티: ${earn} 자산`;
+            }
+            overlay.style.display = 'flex';
+        });
+    }
+
+    function closeResultModalAndGoReady() {
+        document.getElementById('result-modal-overlay').style.display = 'none';
+        playersRef(myName).update({ ready: true });
+        document.getElementById('student-ready-btn').style.display = 'none';
+        document.getElementById('student-ready-status').style.display = 'block';
+        document.getElementById('student-ready-status').innerText = '✅ 거래 대기실 진입 성공!';
+    }
+
+    function closeGameOverForStudent() {
+        document.getElementById('game-over-overlay').style.display = 'none';
+        document.getElementById('student-section').style.display = 'flex';
+    }
+
+    function handleTeacherStatusChange(config) {
+        const status = config.status || 'waiting';
+        applySetupControlLock(status !== 'waiting');
+        renderBigHandPicker();
+        const forceEndBtn = document.getElementById('teacher-force-end-btn');
+        if (forceEndBtn) {
+            forceEndBtn.style.display = (status === 'ready_check' || status === 'playing' || status === 'ended') ? 'block' : 'none';
+        }
+        if (status === 'playing') {
+            document.getElementById('winner-announcement').innerText = "🚀 현재 광기의 PIT 거래소 실시간 작동 중!";
+        } else if (status === 'ready_check') {
+            document.getElementById('winner-announcement').innerText = "⏳ 학생 준비 확인 중입니다. 전원 준비 후 거래를 시작하세요.";
+        } else if(status === 'ended' && config.winner) {
+            const winnerLabel = teamLabelByName(config.winner);
+            let msg = `🔔 🎉 ${winnerLabel} 매수 코너 달성! 장 마감!`;
+            if(config.corner_type === 'double') msg = `🔥 🎉 ${winnerLabel} DOUBLE BULL CORNER 폭발! 🔥`;
+            document.getElementById('winner-announcement').innerText = msg;
+            if (!config.score_applied) {
+                playBellSound();
+                calculateOriginalScores(config.winner, config.corner_type, config.winning_stock).then((gameOverTriggered) => {
+                    if (!gameOverTriggered) gameConfigRef('score_applied').set(true);
+                });
+            }
+        } else {
+            document.getElementById('winner-announcement').innerText = "🛑 [개장 대기] 참여 인원과 종료 점수를 확인한 뒤 새 게임을 시작하세요.";
+        }
+    }
+
+    function renderTeacherRankAndPit(players) {
+        const tbody = document.getElementById('rank-board-rows'); if (!tbody) return; tbody.innerHTML = '';
+        let roomCounts = { 1: [], 2: [], 3: [], 4: [] };
+        let unreadyTeams = getUnreadyTeams(players);
+
+        const banner = document.getElementById('teacher-ready-banner');
+        const setupBtn = document.getElementById('teacher-setup-btn'); const nextBtn = document.getElementById('teacher-next-btn');
+        const forceEndBtn = document.getElementById('teacher-force-end-btn');
+        if (forceEndBtn) {
+            forceEndBtn.style.display = (globalStatus === 'ready_check' || globalStatus === 'playing' || globalStatus === 'ended') ? 'block' : 'none';
+        }
+
+        if (globalStatus === 'waiting') {
+            banner.className = "ready-banner all-set";
+            banner.innerHTML = `1️⃣ 참여 인원과 종료 점수를 정한 뒤 <b>학생 입장 열기</b>를 누르세요.`;
+            setupBtn.disabled = false; setupBtn.style.backgroundColor = "var(--primary)"; setupBtn.innerText = "🚪 학생 입장 열기";
+            nextBtn.disabled = true; nextBtn.style.backgroundColor = "#475569"; nextBtn.innerText = "거래 시작 (대기)";
+        } else if (globalStatus === 'ready_check') {
+            setupBtn.disabled = true; setupBtn.style.backgroundColor = "#475569"; setupBtn.innerText = "✅ 학생 입장 열림";
+            if (unreadyTeams.length > 0) {
+                banner.className = "ready-banner";
+                banner.innerHTML = `2️⃣ 학생 준비 대기 중 ➡️ <span style="color:#ef4444; font-size:1.2rem;">${unreadyTeams.join(', ')}</span>`;
+                nextBtn.disabled = true; nextBtn.style.backgroundColor = "#475569"; nextBtn.innerText = "거래 시작 (대기)";
+            } else if (pendingBigHands.length !== Math.min(2, globalMaxTeams)) {
+                banner.className = "ready-banner";
+                banner.innerHTML = `3️⃣ 전원 준비 완료! 가위바위보 후 <span style="color:#ef4444; font-size:1.2rem;">큰 손 2명</span>을 지정하세요.`;
+                nextBtn.disabled = true; nextBtn.style.backgroundColor = "#475569"; nextBtn.innerText = "거래 시작 (큰 손 대기)";
+            } else {
+                banner.className = "ready-banner all-set";
+                banner.innerHTML = `4️⃣ 큰 손 지정 완료! 이제 거래를 시작하세요.`;
+                nextBtn.disabled = false; nextBtn.style.backgroundColor = "var(--success)"; nextBtn.innerText = "🚀 거래 시작!";
+            }
+        } else if (globalStatus === 'playing') {
+            banner.className = "ready-banner market-live";
+            banner.innerHTML = `📈 시장 작동 중입니다. 설정값은 잠겨 있으며 거래가 진행됩니다.`;
+            setupBtn.disabled = true; setupBtn.style.backgroundColor = "#475569"; setupBtn.innerText = "새 게임 시작 (진행 중)";
+            nextBtn.disabled = true; nextBtn.style.backgroundColor = "#475569"; nextBtn.innerText = "다음 라운드 시작 (진행 중)";
+        } else if (globalStatus === 'ended') {
+            setupBtn.disabled = true; setupBtn.style.backgroundColor = "#475569"; setupBtn.innerText = "새 게임 시작 (진행 중)";
+            if (unreadyTeams.length > 0) {
+                banner.className = "ready-banner";
+                banner.innerHTML = `⚠️ [다음 라운드 대기] 미완료 투자자 ➡️ <span style="color:#ef4444; font-size:1.2rem;">${unreadyTeams.join(', ')}</span>`;
+                nextBtn.disabled = true; nextBtn.style.backgroundColor = "#475569"; nextBtn.innerText = "거래 시작 (대기)";
+            } else if (pendingBigHands.length !== Math.min(2, globalMaxTeams)) {
+                banner.className = "ready-banner";
+                banner.innerHTML = `✊ 다음 라운드 큰 손 2명을 다시 지정하세요.`;
+                nextBtn.disabled = true; nextBtn.style.backgroundColor = "#475569"; nextBtn.innerText = "거래 시작 (큰 손 대기)";
+            } else {
+                banner.className = "ready-banner all-set";
+                banner.innerHTML = `✨ [전원 완료] 큰 손 지정까지 끝났습니다. 다음 거래를 시작하세요!`;
+                nextBtn.disabled = false; nextBtn.style.backgroundColor = "var(--success)"; nextBtn.innerText = "🚀 거래 시작!";
+            }
+        } else {
+            banner.className = "ready-banner";
+            banner.innerHTML = `⏳ 실시간 연결망 모니터링 중...`;
+            setupBtn.disabled = true; nextBtn.disabled = true;
+        }
+
+        const sortedKeys = Object.keys(players).sort((a, b) => (players[b].total_score || 0) - (players[a].total_score || 0));
+        sortedKeys.forEach(key => {
+            const p = players[key]; if(!p.player_name) return;
+            const matchedTeam = MASTER_TEAMS.find(t => t.name === p.player_name);
+            if (!matchedTeam || matchedTeam.id > globalMaxTeams) return;
+
+            const cards = p.cards || [];
+            const reqCount = p.trade_count || 0;
+            const playerLabel = teamLabelByName(p.player_name);
+            if(reqCount > 0) { roomCounts[reqCount].push(playerLabel); }
+            const currentRoundEarn = p.round_earn !== undefined ? p.round_earn : 0;
+
+            const editableBigHand = canEditBigHands();
+            const shownBigHands = globalStatus === 'playing' ? globalBigHands : pendingBigHands;
+            const isBigHand = shownBigHands.includes(matchedTeam.id);
+            const bigControl = editableBigHand
+                ? `<button class="teacher-big-hand-btn ${isBigHand ? 'active' : ''}" onclick="toggleBigHandTeam(${matchedTeam.id})">${isBigHand ? '✨ 큰 손' : '큰 손 지정'}</button>`
+                : (isBigHand ? '<span class="bighand-badge">큰 손 10장</span>' : `<span style="color:#94a3b8; font-size:0.78rem;">${globalStatus === 'playing' ? '일반' : '준비 후 지정'}</span>`);
+            let statusBadge = '<span style="color:#94a3b8; margin-left:8px;">[미접속]</span>';
+            const joinedThisSession = p.joined && (!globalEntrySessionId || p.joined_session_id === globalEntrySessionId);
+            if (joinedThisSession && globalStatus === 'ready_check') statusBadge = p.ready ? '<span style="color:var(--success); margin-left:8px;">[준비완료]</span>' : '<span style="color:var(--danger); margin-left:8px;">[대기중]</span>';
+            if (joinedThisSession && globalStatus === 'playing') statusBadge = '<span style="color:#38bdf8; margin-left:8px;">[거래중]</span>';
+            if (joinedThisSession && globalStatus === 'ended') statusBadge = p.ready ? '<span style="color:var(--success); margin-left:8px;">[준비완료]</span>' : '<span style="color:var(--danger); margin-left:8px;">[대기중]</span>';
+            const kickBtn = `<button class="teacher-mini-btn" onclick="kickPlayerForce1Min('${p.player_name}')">🚫 1분퇴장</button>`;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="font-weight:bold; color:#38bdf8; text-align:left; padding-left:15px;">🏢 ${playerLabel}${statusBadge}</td>
+                <td><div class="teacher-action-stack">${bigControl}${kickBtn}</div></td>
+                <td>${cards.length}장</td>
+                <td style="color:${currentRoundEarn >= 0 ? '#10b981':'#ef4444'}; font-weight:bold;">${currentRoundEarn >= 0 ? '+' : ''}${currentRoundEarn} 점</td>
+                <td style="color:#f59e0b; font-weight:bold; font-size:1.3rem;">${p.total_score || 0}점</td>
+                <td style="font-size:1rem; filter:blur(4px); transition:0.2s;" onmouseover="this.style.filter='none'" onmouseout="this.style.filter='blur(4px)'">${cards.map(c => STOCK_NAMES[c] || c).sort().join(' ')}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        for(let i=1; i<=4; i++) {
+            const roomEl = document.getElementById(`pit-room-${i}`);
+            if(roomCounts[i].length > 0) { roomEl.innerHTML = roomCounts[i].map(name => `<b style="color:#10b981;">${name}</b>`).join(', ') + " 외침 중!"; }
+            else { roomEl.innerText = "-"; }
+        }
+    }
+
+    function pickBigHandTeams(maxTeams) {
+        const pool = Array.from({length: maxTeams}, (_, i) => i + 1); const extras = [];
+        for (let k = 0; k < 2; k++) { const pick = pool.splice(Math.floor(Math.random() * pool.length), 1)[0]; extras.push(pick); }
+        return extras;
+    }
+
+    window.kickPlayerForce1Min = function(teamName) {
+        if (confirm(`🏢 [${teamLabelByName(teamName)}]을 1분간 거래 제한(퇴장)하시겠습니까?`)) {
+            playersRef(teamName).update({
+                ban_until: Date.now() + 60000, ready: false, trade_count: 0, pin_code: "", offer_cards: null, target_team: "", typed_pin: ""
+            });
+        }
+    }
+
+    window.manualGameOverForce = function() {
+        if(askForceEndConfirmation()) {
+            currentMode = 'teacher';
+            gameConfigRef().update({ status: 'game_over' });
+        }
+    }
+
+    function renderFinalPodiumGraphics(players) {
+        const container = document.getElementById('podium-display'); container.innerHTML = '';
+        const sorted = Object.keys(players).map(k => players[k]).filter(p => p && p.player_name).sort((a,b) => (b.total_score || 0) - (a.total_score || 0));
+        const layers = [
+            { pos: 1, label: "🥈 2위", color: "#cbd5e1", h: "100px" },
+            { pos: 0, label: "🥇 대왕소 1위", color: "#f59e0b", h: "150px" },
+            { pos: 2, label: "🥉 3위", color: "#b45309", h: "75px" }
+        ];
+        layers.forEach(item => {
+            const p = sorted[item.pos];
+            if(p) {
+                const block = document.createElement('div'); block.style.width = "30%"; block.style.textAlign = "center";
+                block.innerHTML = `
+                    <div style="font-weight:bold; color:white; font-size:1.1rem; margin-bottom:6px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${teamLabelByName(p.player_name)}</div>
+                    <div style="color:var(--accent); font-weight:bold; margin-bottom:8px; font-size:1.05rem;">${p.total_score || 0}점</div>
+                    <div style="background:${item.color}; height:${item.h}; border-radius:10px 10px 0 0; color:#0f172a; font-weight:bold; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">${item.label}</div>
+                `; container.appendChild(block);
+            }
+        });
+    }
+
+    function playBellSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
+            oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+            oscillator.connect(gainNode); gainNode.connect(audioCtx.destination);
+            oscillator.start(); oscillator.stop(audioCtx.currentTime + 1.5);
+        } catch(e) {}
+    }
+
+    function resetToHomeForce() {
+        if(confirm("모든 금융 데이터를 초기화하고 첫 마스터 화면으로 가시겠습니까?\n\n모든 학생의 카드와 점수가 삭제됩니다.")) {
+            gameConfigRef().set({ max_teams: 8, end_score: 300, status: 'waiting', winner: "", corner_type: "", winning_stock: "", score_applied: false, big_hand_teams: [], entry_session_id: "", deal_id: "" });
+            playersRef().remove().then(() => { clearSavedStudentSession(); location.reload(); });
+        }
+    }
+
+    // ===== [v10 교정 완료] 파이어베이스 객체 변환 방어 루틴 주입 ➡️ 황금주 패널티 완벽 작동 =====
+    function calculateOriginalScores(winnerName, cornerType, winningStock) {
+        return playersRef().once('value').then((snapshot) => {
+            const players = snapshot.val() || {}; let isCeilingTriggered = false;
+            const endScore = globalEndScore;
+            const updates = {};
+            Object.keys(players).forEach(key => {
+                const p = players[key]; if (!p.cards) return; let roundScore = 0;
+                
+                // 파이어베이스 데이터 압축으로 인한 객체 변환 방어 체인 구축
+                const pCards = Array.isArray(p.cards) ? p.cards : Object.values(p.cards);
+                
+                if (p.player_name === winnerName) {
+                    const baseScore = STOCK_VALS[winningStock] || 60;
+                    roundScore = (cornerType === 'double') ? baseScore * 2 : baseScore;
+                } else {
+                    let penalty = 0;
+                    if(pCards.includes(BEAR)) penalty -= 20;
+                    if(pCards.includes(BULL)) penalty -= 20; // 패배 시 황금주 보유 감점 정밀 작동
+                    roundScore = penalty;
+                }
+                const newTotal = (p.total_score || 0) + roundScore;
+                if (newTotal >= endScore) { isCeilingTriggered = true; }
+                updates['/players/' + key + '/round_earn'] = roundScore;
+                updates['/players/' + key + '/total_score'] = newTotal;
+                updates['/players/' + key + '/trade_count'] = 0;
+                updates['/players/' + key + '/pin_code'] = "";
+                updates['/players/' + key + '/offer_cards'] = null;
+                updates['/players/' + key + '/target_team'] = "";
+                updates['/players/' + key + '/typed_pin'] = "";
+            });
+            return updateRoom(updates).then(() => {
+                if (isCeilingTriggered) {
+                    return gameConfigRef().update({ status: 'game_over', score_applied: true }).then(() => true);
+                }
+                return false;
+            });
+        });
+    }
+
+    window.addEventListener('DOMContentLoaded', initApp);
+</script>
+<div class="copyright-strip">© 2026 <strong>청완초등학교 교사 이우진 (Woojin Lee)</strong> · 광기의 PIT 거래소 · 무단 복제·재배포 금지 · Licensed under CC BY-NC 4.0</div>
+
+</body>
+</html>
