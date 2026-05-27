@@ -1107,6 +1107,36 @@
             }
         }
 
+    
+        /* ===== v20: 투자자 계좌 상태 2줄 고정 표시 ===== */
+        .team-tile .account-name-line {
+            display: block;
+            width: 100%;
+            font-size: 1.2rem;
+            font-weight: 900;
+            line-height: 1.25;
+            text-align: center;
+        }
+
+        .team-tile .account-status-line {
+            display: block;
+            width: 100%;
+            margin-top: 5px;
+            font-size: 0.82rem;
+            font-weight: 900;
+            line-height: 1.2;
+            text-align: center;
+            color: #64748b;
+        }
+
+        .team-tile.claimed .account-status-line {
+            color: #0f172a;
+        }
+
+        .team-tile.mine .account-status-line {
+            color: #1d4ed8;
+        }
+
     </style>
 </head>
 <body>
@@ -2809,8 +2839,8 @@
             }
 
             tile.innerHTML = `
-                <div style="font-size:1.2rem; font-weight:900;">${teamLabel(teamInfo)}</div>
-                ${subLine ? `<div class="team-code-line">${subLine}</div>` : ''}
+                <div class="account-name-line">${teamLabel(teamInfo)}</div>
+                ${subLine ? `<div class="account-status-line">${subLine}</div>` : ''}
             `;
 
             tile.onclick = () => {
