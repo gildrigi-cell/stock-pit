@@ -1233,6 +1233,48 @@
             }
         }
 
+    
+        /* ===== v23: 교사 화면 계정 칸 정리 ===== */
+        .teacher-account-cell {
+            font-weight: 900;
+            color: #38bdf8;
+            text-align: center;
+            white-space: nowrap;
+            word-break: keep-all;
+            font-size: 0.95rem;
+            padding-left: 4px !important;
+            padding-right: 4px !important;
+        }
+
+        .rank-table th:first-child,
+        .rank-table td:first-child {
+            min-width: 78px;
+        }
+
+    
+        /* ===== v24: 매매 제한 직접 버튼 ===== */
+        .trade-limit-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 88px;
+            padding: 5px 8px;
+            border: none;
+            border-radius: 999px;
+            background: #f59e0b;
+            color: #111827;
+            font-size: 0.78rem;
+            font-weight: 900;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .trade-limit-btn:hover { filter: brightness(1.06); }
+        .trade-limit-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            filter: grayscale(0.25);
+        }
+
     </style>
 </head>
 <body>
@@ -1483,7 +1525,7 @@
                             <th style="width: 13%;">계정</th>
                             <th style="width: 10%;">상태</th>
                             <th style="width: 10%;">보유</th>
-                            <th style="width: 12%;">1분 거래 제한</th>
+                            <th style="width: 12%;">매매 제한</th>
                             <th style="width: 9%;">운영</th>
                             <th style="width: 11%;">라운드 손익</th>
                             <th style="width: 12%;">누적 자산</th>
@@ -2229,8 +2271,9 @@
             `1: 준비 상태 초기화\n` +
             `2: 거래 상태 초기화\n` +
             `3: 재입장 허용\n` +
-            `4: 1분 거래 제한\n` +
-            `5: 학생 내보내기\n\n` +
+            `4: 학생 내보내기
+
+` +
             `실행할 번호를 입력하세요.`
         );
         if (!choice) return;
@@ -2263,14 +2306,6 @@
             return;
         }
         if (choice === '4') {
-            await playersRef(teamName).update({
-                ban_until: Date.now() + 60000,
-                ready: false,
-                ...baseTradeReset
-            });
-            return;
-        }
-        if (choice === '5') {
             const ok = confirm(`[${label}] 학생을 현재 방에서 내보낼까요?`);
             if (!ok) return;
             await playersRef(teamName).update({
@@ -2282,7 +2317,7 @@
             });
             return;
         }
-        alert('1~5번 중 하나를 입력해 주세요.');
+        alert('1~4번 중 하나를 입력해 주세요.');
     }
 
 
@@ -3809,7 +3844,11 @@
         const until = Number(p.ban_until || 0);
         const remain = Math.max(0, Math.ceil((until - Date.now()) / 1000));
         if (remain > 0) return `<span class="ban-pill active">제한 중 ${remain}초</span>`;
-        return '<span class="ban-pill normal">정상</span>';
+
+        const encodedName = encodeURIComponent((p && p.player_name) ? p.player_name : '');
+        const disabled = teacherIsController ? '' : 'disabled';
+        const title = teacherIsController ? '이 학생의 매매를 1분 동안 제한합니다.' : '현재 제어권을 가진 교사만 사용할 수 있습니다.';
+        return `<button class="trade-limit-btn" ${disabled} title="${title}" onclick="applyOneMinuteTradeLimit(decodeURIComponent('${encodedName}'))">1분 매매 제한</button>`;
     }
 
     function getWalletEmoji(cards) {
@@ -3911,7 +3950,7 @@
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td style="font-weight:bold; color:#38bdf8; text-align:left;">🏢 ${playerLabel}${onlineDot}</td>
+                <td class="teacher-account-cell">${playerLabel}</td>
                 <td><span class="teacher-status-pill ${statusInfo.cls}">${statusInfo.text}</span></td>
                 <td><span class="teacher-hold-pill ${holdClass}">${holdText}</span></td>
                 <td>${getBanStatusText(p)}</td>
@@ -3936,13 +3975,24 @@
         return extras;
     }
 
-    window.kickPlayerForce1Min = function(teamName) {
-        if (!guardTeacherControl('학생 1분퇴장')) return;
-        if (confirm(`🏢 [${teamLabelByName(teamName)}]을 1분간 거래 제한(퇴장)하시겠습니까?`)) {
+    window.applyOneMinuteTradeLimit = function(teamName) {
+        if (!guardTeacherControl('1분 매매 제한')) return;
+        if (!teamName) return;
+        if (confirm(`🏢 [${teamLabelByName(teamName)}] 계좌를 1분 동안 매매 제한할까요?`)) {
             playersRef(teamName).update({
-                ban_until: Date.now() + 60000, ready: false, trade_count: 0, pin_code: "", offer_cards: null, target_team: "", typed_pin: ""
+                ban_until: Date.now() + 60000,
+                ready: false,
+                trade_count: 0,
+                pin_code: "",
+                offer_cards: null,
+                target_team: "",
+                typed_pin: ""
             });
         }
+    }
+
+    window.kickPlayerForce1Min = function(teamName) {
+        window.applyOneMinuteTradeLimit(teamName);
     }
 
     window.manualGameOverForce = function() {
