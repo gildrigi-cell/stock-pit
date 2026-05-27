@@ -2036,7 +2036,9 @@
     }
 
     function canTeacherControlNow() {
-        return currentMode === 'teacher' && canTeacherControlNow() && !isTeacherControlExpired(teacherLockState, globalStatus);
+        return currentMode === 'teacher' &&
+            teacherIsController &&
+            !isTeacherControlExpired(teacherLockState, globalStatus);
     }
 
     function canOpenTeacherControlByCode() {
@@ -3260,11 +3262,17 @@
         if(mode === 'teacher') {
             document.getElementById('teacher-section').style.display = 'flex';
             renderStaticTicker();
+
+            const configSnap = await gameConfigRef().once('value');
+            latestGameConfig = configSnap.val() || {};
+            globalStatus = latestGameConfig.status || 'waiting';
+            handleTeacherStatusChange(latestGameConfig);
+
             await acquireTeacherControl(false);
             listenTeacherLock();
             startTeacherUiRefreshTimer();
             await cleanupStaleRoomIfNeeded();
-            gameConfigRef().once('value').then((snap) => { handleTeacherStatusChange(snap.val() || {}); });
+
             playersRef().once('value').then((snap) => {
                 latestPlayersData = snap.val() || {};
                 renderTeacherRankAndPit(latestPlayersData);
