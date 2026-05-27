@@ -1330,6 +1330,13 @@
             color: #b45309;
         }
 
+    
+        .room-modal-choice:disabled {
+            cursor: not-allowed !important;
+            opacity: 0.55 !important;
+            filter: grayscale(0.15);
+        }
+
     </style>
 </head>
 <body>
@@ -1859,11 +1866,18 @@
     function isSameTeacherCachedRoom(code, lock = null) {
         const normalized = normalizeRoomCode(code);
         const token = getTeacherToken();
+
+        // teacher_lock이 살아 있으면 이 값이 절대 기준입니다.
+        // 다른 교사의 lock이 있으면 로컬 캐시가 남아 있어도 같은 교사로 보지 않습니다.
+        if (lock && lock.teacher_token) {
+            return lock.teacher_token === token;
+        }
+
+        // lock이 사라진 경우에만 같은 기기의 복귀 캐시를 인정합니다.
         const info = getTeacherActiveRoomInfo();
         const sameLocalRoom = info.room === normalized && info.token === token;
-        const sameLock = lock && lock.teacher_token && lock.teacher_token === token;
         const localNotExpired = info.started_at && (Date.now() - info.started_at < TEACHER_SESSION_LIMIT_MS);
-        return !!(sameLock || (sameLocalRoom && localNotExpired));
+        return !!(sameLocalRoom && localNotExpired);
     }
 
     function getRoomActivityStartedAt(lock, config) {
@@ -1923,9 +1937,9 @@
         const activityExpired = isRoomActivityExpired(lock, config);
         const endedByTeacher = status === 'game_over';
 
-        // 6시간이 지났거나 수업 종료 상태면 방 선택 화면에서는 사용 가능으로 보입니다.
+        // 6시간 경과 또는 명시적 종료 후에는 새 수업용으로 사용 가능 처리
         if (lockExpired || activityExpired || endedByTeacher) {
-            return { code, lock, config, expired: true, state: 'available', label: '사용 가능' };
+            return { code, lock, config, expired: true, state: 'available', label: '사용 가능', sameTeacher: false };
         }
 
         const sameTeacher = isSameTeacherCachedRoom(code, lock);
@@ -1938,17 +1952,19 @@
             if (sameTeacher) {
                 state = 'available';
                 label = '내가 사용 중';
-            } else if (status === 'playing') {
-                state = 'playing';
-                label = '게임 중';
             } else {
-                state = 'in_use';
-                label = '사용 중';
+                state = (status === 'playing') ? 'playing' : 'in_use';
+                label = (status === 'playing') ? '게임 중' : '사용 중';
             }
         } else if (status !== 'waiting') {
-            // 이전 교사 화면/네트워크 상황 때문에 잠금이 없어도 수업이 끝나지 않은 방은 막습니다.
-            state = status === 'playing' ? 'playing' : 'in_use';
-            label = status === 'playing' ? '게임 중' : '사용 중';
+            // lock이 없어도 수업이 종료되지 않은 상태면 다른 교사는 들어갈 수 없습니다.
+            if (sameTeacher) {
+                state = 'available';
+                label = '내가 사용 중';
+            } else {
+                state = (status === 'playing') ? 'playing' : 'in_use';
+                label = (status === 'playing') ? '게임 중' : '사용 중';
+            }
         }
 
         return { code, lock, config, expired: false, state, label, sameTeacher };
@@ -1970,12 +1986,16 @@
 
         if (availability.expired || status === 'game_over') {
             await resetRoomForNewClass(code);
-            roomAvailabilityCache[code] = { state: 'available', label: '사용 가능' };
+            roomAvailabilityCache[code] = { state: 'available', label: '사용 가능', sameTeacher: false };
+            return true;
+        }
+
+        if (availability.sameTeacher) {
             return true;
         }
 
         if (availability.state === 'in_use' || availability.state === 'playing') {
-            alert(`${getRoomLabel(code)} 시장은 현재 ${availability.label}입니다.\n수업 종료가 되지 않은 시장에는 다른 교사가 들어갈 수 없습니다.\n\n기존 교사가 다시 접속하면 저장된 교사 기기로 재입장할 수 있고, 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.`);
+            alert(`${getRoomLabel(code)} 시장은 현재 ${availability.label}입니다.\n수업 종료가 되지 않은 시장에는 다른 교사가 들어갈 수 없습니다.\n\n기존 교사는 같은 기기에서 다시 들어갈 수 있고, 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.`);
             return false;
         }
 
@@ -2864,15 +2884,22 @@
         grid.innerHTML = '';
         ROOM_CODES.forEach(code => {
             const info = roomAvailabilityCache[code] || { state: 'available', label: pendingEntryMode === 'teacher' ? '확인 중' : '사용 가능' };
+            const lockedForTeacher = pendingEntryMode === 'teacher' && (info.state === 'in_use' || info.state === 'playing');
+
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = `room-modal-choice ${info.state || 'available'}` + (code === pendingRoomCode ? ' active' : '');
+            btn.disabled = lockedForTeacher;
             btn.innerHTML = `
                 <span class="room-status-dot"></span>
                 <span class="room-market-label">${getRoomLabel(code)}</span>
                 <span class="room-market-status">${pendingEntryMode === 'teacher' ? info.label : '선택 가능'}</span>
             `;
             btn.onclick = () => {
+                if (lockedForTeacher) {
+                    alert(`${getRoomLabel(code)} 시장은 현재 ${info.label}입니다.\n수업 종료가 되지 않은 시장에는 다른 교사가 들어갈 수 없습니다.`);
+                    return;
+                }
                 pendingRoomCode = code;
                 renderRoomModalChoices();
             };
