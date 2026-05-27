@@ -924,6 +924,189 @@
         .wallet-emoji { font-size: 1.18rem; letter-spacing: 1px; filter: blur(4px); transition: 0.2s; white-space: normal; word-break: keep-all; }
         .wallet-emoji:hover { filter: none; }
 
+    
+        /* ===== v18: 계좌 1회 변경 + 세로모드 겹침 방지 ===== */
+        .account-change-note {
+            margin: 0 0 12px 0;
+            color: #64748b;
+            text-align: center;
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+        .account-change-note b { color: #ef4444; }
+
+        .team-tile.available .team-code-line {
+            color: #0f766e;
+            font-weight: 900;
+        }
+        .team-tile.claimed {
+            opacity: 0.34 !important;
+            filter: grayscale(0.45);
+            cursor: not-allowed;
+        }
+        .team-tile.mine {
+            opacity: 1 !important;
+            outline: 3px solid #2563eb;
+            box-shadow: 0 0 0 4px rgba(37,99,235,0.15);
+        }
+
+        @media (orientation: portrait), (max-width: 720px) {
+            #student-section.view-frame {
+                height: auto !important;
+                min-height: 100vh !important;
+                padding: 10px 10px 40px 10px !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+            }
+
+            #student-section .student-layout {
+                height: auto !important;
+                min-height: 100vh !important;
+                display: grid !important;
+                grid-template-rows: auto auto auto auto !important;
+                gap: 10px !important;
+                overflow: visible !important;
+            }
+
+            #student-section .student-top {
+                height: auto !important;
+                min-height: 0 !important;
+                display: grid !important;
+                grid-template-columns: 1fr !important;
+                gap: 8px !important;
+                padding: 10px !important;
+                align-items: stretch !important;
+            }
+
+            #student-section .student-top-mainline {
+                width: 100%;
+                display: grid !important;
+                grid-template-columns: 1fr !important;
+                gap: 8px !important;
+            }
+
+            #student-section #team-display {
+                white-space: normal !important;
+                text-align: center !important;
+            }
+
+            #student-section .home-btn.student {
+                width: 100%;
+            }
+
+            #student-section .student-asset-summary {
+                width: 100%;
+                height: auto !important;
+                min-height: 34px;
+                white-space: normal !important;
+                text-align: center;
+            }
+
+            #student-section .stock-score-strip {
+                height: auto !important;
+                grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+                gap: 4px !important;
+                padding: 5px !important;
+            }
+
+            #student-section .stock-score-chip {
+                height: 28px !important;
+                font-size: clamp(0.58rem, 2.2vw, 0.76rem) !important;
+                padding: 0 2px !important;
+            }
+
+            #student-section .student-mid {
+                height: auto !important;
+                min-height: 0 !important;
+                padding: 10px !important;
+                overflow: visible !important;
+            }
+
+            #student-section #portfolio-card-box {
+                height: auto !important;
+                min-height: 0 !important;
+            }
+
+            #student-section .card-container {
+                height: auto !important;
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                grid-template-rows: none !important;
+                gap: 8px !important;
+                overflow: visible !important;
+            }
+
+            #student-section .card {
+                height: auto !important;
+                min-height: 86px !important;
+                padding: 8px 3px !important;
+            }
+
+            #student-section .student-bot.compact-student-trade {
+                height: auto !important;
+                min-height: 0 !important;
+                display: grid !important;
+                grid-template-rows: auto auto !important;
+                gap: 8px !important;
+                overflow: visible !important;
+            }
+
+            #student-section .shout-action-strip {
+                display: grid !important;
+                grid-template-columns: 1fr !important;
+                gap: 8px !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+
+            #student-section .bot-left,
+            #student-section .trade-submit-cell,
+            #student-section .inline-code-box,
+            #student-section #trade-submit-btn,
+            #student-section #trade-cancel-btn {
+                height: 42px !important;
+                width: 100% !important;
+            }
+
+            #student-section #action-zone.trade-main-area {
+                display: grid !important;
+                grid-template-columns: 1fr !important;
+                grid-template-rows: auto auto !important;
+                gap: 8px !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+
+            #student-section .target-panel,
+            #student-section .contract-panel {
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+            }
+
+            #student-section .target-panel {
+                grid-template-rows: auto auto !important;
+            }
+
+            #student-section .trade-step-label {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                white-space: normal !important;
+                line-height: 1.25 !important;
+            }
+
+            #student-section .target-tile-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                grid-auto-rows: 48px !important;
+                gap: 6px !important;
+                overflow: visible !important;
+            }
+
+            #student-section .contract-panel {
+                grid-template-rows: 30px 52px 52px 24px !important;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -1204,7 +1387,8 @@
     </div>
 
     <div id="student-gate-login" class="gate-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: 400; background: white; color: #334155; padding: 40px 20px; justify-content: start; display: none;">
-        <h2 style="font-weight: 900; margin-bottom: 20px; font-size: 2rem; color: #0f172a; text-align:center;">📱 투자자 계좌를 터치하여 연동하세요</h2>
+        <h2 style="font-weight: 900; margin-bottom: 10px; font-size: 2rem; color: #0f172a; text-align:center;">📱 투자자 계좌를 터치하여 연동하세요</h2>
+        <p class="account-change-note">계좌 변경은 <b>1번만</b> 가능합니다. 모두가 계좌를 선택하기 전까지만 바꿀 수 있어요.</p>
         <div class="room-badge light" style="margin-bottom: 14px;">🏫 <span id="student-login-room-code">한국 코스피 (KOSPI)</span></div>
         <div id="team-quick-grid" class="team-quick-grid"></div>
         <button class="btn" style="background-color: #64748b; margin-top: 20px; width: 250px;" onclick="goHome(true)">🚪 메인 게이트 복귀</button>
@@ -1506,6 +1690,41 @@
         }
         return token;
     }
+
+
+    function getAccountChangeKey() {
+        return `pit_account_change_used_${currentRoomCode}_${globalEntrySessionId || 'no_session'}`;
+    }
+
+    function getAccountChangeCount() {
+        try { return Number(localStorage.getItem(getAccountChangeKey()) || 0); }
+        catch(e) { return 0; }
+    }
+
+    function setAccountChangeCount(count) {
+        try { localStorage.setItem(getAccountChangeKey(), String(count)); }
+        catch(e) {}
+    }
+
+    function findMySelectedAccountName(playersData = latestPlayersData) {
+        const token = getStudentDeviceToken();
+        return Object.keys(playersData || {}).find(name => {
+            const p = playersData[name] || {};
+            return p.joined && p.device_token === token && (!globalEntrySessionId || p.joined_session_id === globalEntrySessionId);
+        }) || "";
+    }
+
+    function areAllAccountsSelected(playersData = latestPlayersData) {
+        for (let i = 1; i <= globalMaxTeams; i++) {
+            const teamInfo = MASTER_TEAMS[i - 1];
+            if (!teamInfo) continue;
+            const p = playersData[teamInfo.name] || {};
+            const joinedThisSession = p.joined && (!globalEntrySessionId || p.joined_session_id === globalEntrySessionId);
+            if (!joinedThisSession) return false;
+        }
+        return true;
+    }
+
 
     function isTeacherLockStale(lock) {
         if (!lock || !lock.teacher_token) return true;
@@ -2565,21 +2784,29 @@
     function renderTeamQuickGrid(maxTeams, playersData) {
         const grid = document.getElementById('team-quick-grid'); if (!grid) return; grid.innerHTML = '';
         const myDeviceToken = getStudentDeviceToken();
+        const mySelectedName = findMySelectedAccountName(playersData);
+        const changeCount = getAccountChangeCount();
+        const allSelected = areAllAccountsSelected(playersData);
 
         for(let i = 1; i <= maxTeams; i++) {
             const teamInfo = MASTER_TEAMS[i-1]; if (!teamInfo) continue;
             const player = playersData[teamInfo.name];
             const isClaimed = player && player.joined && (!globalEntrySessionId || player.joined_session_id === globalEntrySessionId);
             const isMine = isClaimed && player.device_token === myDeviceToken;
-            const isClaimedOnline = isClaimed && isStudentOnline(player) && !isMine;
+            const isClaimedOnline = isClaimed && !isMine;
 
             const tile = document.createElement('div');
-            tile.className = 'team-tile' + (isClaimedOnline ? ' claimed' : '') + (isMine ? ' mine' : '');
+            tile.className = 'team-tile' + (isClaimedOnline ? ' claimed' : '') + (isMine ? ' mine' : '') + (!isClaimed ? ' available' : '');
             tile.style.background = TEAM_COLORS[(i-1) % TEAM_COLORS.length];
 
-            const subLine = isClaimedOnline
-                ? '사용 중'
-                : (isMine ? '내가 선택한 계좌' : `식별코드: ${teamInfo.pw}`);
+            let subLine = '터치하여 연동';
+            if (isClaimedOnline) subLine = '사용 중';
+            else if (isMine) subLine = changeCount > 0 ? '내 계좌 · 변경 사용 완료' : '내 계좌 · 1번 변경 가능';
+            else if (mySelectedName) {
+                if (allSelected) subLine = '모두 선택 완료 · 변경 불가';
+                else if (changeCount > 0) subLine = '변경 1회 사용 완료';
+                else subLine = '한 번만 변경 가능';
+            }
 
             tile.innerHTML = `
                 <div style="font-size:1.2rem; font-weight:900;">${teamLabel(teamInfo)}</div>
@@ -2599,14 +2826,35 @@
 
     async function quickStudentEntry(teamInfo) {
         const myDeviceToken = getStudentDeviceToken();
+        const mySelectedName = myName || findMySelectedAccountName(latestPlayersData);
+        const selectedPlayer = mySelectedName ? (latestPlayersData[mySelectedName] || {}) : {};
+        const isChanging = !!(mySelectedName && mySelectedName !== teamInfo.name);
 
-        if (myName && myName !== teamInfo.name) {
-            const current = latestPlayersData[myName] || {};
-            if (current.ready) {
+        if (mySelectedName === teamInfo.name) {
+            setSavedStudentSession(teamInfo.name);
+            autoSessionLogin(teamInfo.name);
+            return;
+        }
+
+        if (isChanging) {
+            if (selectedPlayer.ready) {
                 alert('준비 완료 후에는 학생이 직접 계좌를 바꿀 수 없습니다. 선생님께 재입장 허용을 요청하세요.');
                 return;
             }
-            await playersRef(myName).update({
+            if (globalStatus !== 'ready_check') {
+                alert('계좌 변경은 학생 입장 및 준비 단계에서만 가능합니다.');
+                return;
+            }
+            if (areAllAccountsSelected(latestPlayersData)) {
+                alert('모두가 계좌를 선택한 뒤에는 학생이 직접 계좌를 바꿀 수 없습니다. 선생님께 재입장 허용을 요청하세요.');
+                return;
+            }
+            if (getAccountChangeCount() >= 1) {
+                alert('계좌 변경은 1번만 가능합니다. 다시 바꾸려면 선생님께 재입장 허용을 요청하세요.');
+                return;
+            }
+
+            await playersRef(mySelectedName).update({
                 joined: false,
                 ready: false,
                 online: false,
@@ -2616,8 +2864,10 @@
                 offer_cards: null,
                 target_team: "",
                 typed_pin: "",
+                device_token: "",
                 last_seen_at: Date.now()
             });
+            setAccountChangeCount(1);
         }
 
         await playersRef(teamInfo.name).update({
