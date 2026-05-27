@@ -1003,6 +1003,7 @@
                     <li><b>라운드 마감</b>: 누군가 상한가 마감벨을 울리면 라운드가 끝나고 자산이 계산됩니다.</li>
                     <li><b>다음 라운드</b>: 학생들이 결과를 확인하고 준비 완료를 누르면 다음 거래를 시작합니다.</li>
                     <li><b>수업 종료</b>: 시간이 부족하면 <b>수업 종료 및 강제 시상식</b>으로 현재 누적 자산 기준 시상식을 열 수 있습니다.</li>
+                    <li><b>제어권 관리</b>: 다른 교사가 제어 중인 방을 열어야 할 때는 <b>교사용 관리 코드 0000</b>을 입력합니다. 단, 게임 중에는 학생 거래 보호를 위해 제어권을 가져오지 않습니다.</li>
                 </ol>
             </div>
 
@@ -1344,7 +1345,7 @@
     ];
     const ROOM_CODES = ROOM_MARKETS.map(room => room.id);
     const DEFAULT_ROOM_CODE = ROOM_CODES[0];
-    const TEACHER_ADMIN_CODE = '0420';
+    const TEACHER_ADMIN_CODE = '0000';
 
     const MASTER_TEAMS = [
         { id: 1, name: "떡상", pw: "101" }, { id: 2, name: "대박", pw: "202" },
@@ -1698,7 +1699,7 @@
         } else {
             const answer = prompt(
                 `현재 ${getRoomLabel(currentRoomCode)}은 다른 교사가 제어 중입니다.\n` +
-                `수업 중 제어권을 열어야 하면 교사용 관리 코드를 입력하세요.\n\n` +
+                `수업 중 제어권을 열어야 하면 교사용 관리 코드 0000을 입력하세요.\n\n` +
                 `주의: 기존 교사 화면은 읽기 전용으로 바뀝니다.`
             );
             if (answer !== getRoomLabel(currentRoomCode)) {
