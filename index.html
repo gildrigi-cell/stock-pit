@@ -1170,6 +1170,69 @@
             }
         }
 
+    
+        /* ===== v22: 모든 투자자 계좌 카드를 계좌명/상태 2줄로 강제 ===== */
+        .team-tile {
+            min-height: 76px;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-direction: column !important;
+            gap: 0 !important;
+            line-height: 1.2 !important;
+            box-sizing: border-box;
+        }
+
+        .team-tile .account-two-line {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            gap: 5px !important;
+        }
+
+        .team-tile .account-name-line,
+        .team-tile .account-status-line {
+            display: block !important;
+            width: 100% !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        .team-tile .account-name-line {
+            font-size: 1.18rem !important;
+            font-weight: 900 !important;
+            line-height: 1.2 !important;
+        }
+
+        .team-tile .account-status-line {
+            font-size: 0.82rem !important;
+            font-weight: 900 !important;
+            line-height: 1.15 !important;
+            min-height: 1em !important;
+            color: #64748b;
+        }
+
+        .team-tile.claimed .account-status-line { color: #0f172a !important; }
+        .team-tile.mine .account-status-line { color: #1d4ed8 !important; }
+        .team-tile.pending .account-status-line { color: #047857 !important; }
+
+        @media (max-width: 520px) {
+            .team-tile {
+                min-height: 72px;
+                padding: 10px 6px !important;
+            }
+            .team-tile .account-name-line {
+                font-size: 1rem !important;
+            }
+            .team-tile .account-status-line {
+                font-size: 0.74rem !important;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -2937,8 +3000,10 @@
             else if (isPending) subLine = pendingStudentAccountChangeUsed ? '선택됨 · 변경 사용 완료' : '선택됨 · 1번 변경 가능';
 
             tile.innerHTML = `
-                <div class="account-name-line">${teamLabel(teamInfo)}</div>
-                <div class="account-status-line">${subLine}</div>
+                <div class="account-two-line">
+                    <div class="account-name-line">${teamLabel(teamInfo)}</div>
+                    <div class="account-status-line">${subLine}</div>
+                </div>
             `;
 
             tile.onclick = () => {
