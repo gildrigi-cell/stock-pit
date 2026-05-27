@@ -1361,6 +1361,12 @@
             color: #b45309;
         }
 
+    
+        #teacher-password-btn {
+            background: #334155;
+            border: 1px solid #64748b;
+        }
+
     </style>
 </head>
 <body>
@@ -1547,6 +1553,7 @@
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <button class="home-btn" onclick="goHome(false)">🏠 홈</button>
             <div class="room-badge">🏫 <span id="teacher-room-code">한국 코스피 (KOSPI)</span></div>
+            <button class="home-btn" id="teacher-password-btn" onclick="setTeacherRoomPasswordManually()">🔑 입장 비밀번호</button>
         <div class="room-badge teacher-lock-badge readonly" id="teacher-lock-badge">🔐 제어권 확인 중</div>
         <button class="teacher-takeover-btn" id="teacher-takeover-btn" onclick="takeOverTeacherLock()">사용 중</button>
         </div>
@@ -2060,6 +2067,36 @@
 
         return true;
     }
+
+    async function ensureTeacherRoomPassword() {
+        const snap = await gameConfigRef().once('value');
+        const config = snap.val() || {};
+        latestGameConfig = config;
+        const existing = String(config.room_password || '').trim();
+        if (existing) return true;
+
+        const pw = promptTeacherRoomPassword(getRoomLabel(currentRoomCode));
+        if (pw === null) {
+            alert('학생 입장 비밀번호가 설정되지 않았습니다. 교사 화면에서 [입장 비밀번호] 버튼으로 다시 설정할 수 있습니다.');
+            return false;
+        }
+
+        pendingTeacherRoomPassword = pw;
+        await saveTeacherRoomPassword(currentRoomCode, pw);
+        return true;
+    }
+
+    window.setTeacherRoomPasswordManually = async function() {
+        if (!guardTeacherControl('입장 비밀번호 설정')) return;
+        const pw = promptTeacherRoomPassword(getRoomLabel(currentRoomCode));
+        if (pw === null) return;
+        pendingTeacherRoomPassword = pw;
+        await saveTeacherRoomPassword(currentRoomCode, pw);
+        await markTeacherSessionInConfig(currentRoomCode);
+        alert('학생 입장 비밀번호를 설정했습니다.');
+    }
+
+
 
 
 
@@ -3748,6 +3785,10 @@
             handleTeacherStatusChange(latestGameConfig);
 
             await acquireTeacherControl(false);
+
+            // 교사가 새 시장에 들어왔는데 비밀번호가 비어 있으면 여기서 한 번 더 보장합니다.
+            await ensureTeacherRoomPassword();
+
             listenTeacherLock();
             startTeacherUiRefreshTimer();
             await cleanupStaleRoomIfNeeded();
@@ -4404,7 +4445,8 @@
     }
 
     function handleTeacherStatusChange(config) {
-        const status = config.status || 'waiting';
+        latestGameConfig = config || {};
+        const status = latestGameConfig.status || 'waiting';
         applySetupControlLock(status !== 'waiting');
         renderBigHandPicker();
         const forceEndBtn = document.getElementById('teacher-force-end-btn');
@@ -4602,7 +4644,9 @@
         if (!guardTeacherControl('강제 시상식')) return;
         if(askForceEndConfirmation()) {
             currentMode = 'teacher';
-            gameConfigRef().update({
+            globalStatus = 'game_over';
+            latestGameConfig = {
+                ...(latestGameConfig || {}),
                 status: 'game_over',
                 updated_at: Date.now(),
                 status_changed_at: Date.now(),
@@ -4611,7 +4655,9 @@
                 teacher_session_started_at: 0,
                 teacher_session_expires_at: 0,
                 room_password: ""
-            }).then(() => {
+            };
+
+            gameConfigRef().update(latestGameConfig).then(() => {
                 roomRef('teacher_lock').remove();
                 clearTeacherActiveRoom(currentRoomCode);
             });
@@ -4652,14 +4698,23 @@
     }
 
     function resetToHomeForce() {
-        if (!guardTeacherControl('전체 초기화')) return;
+        const status = (latestGameConfig && latestGameConfig.status) || globalStatus || 'waiting';
+
+        // 폐장 시상식 화면에서는 이미 교사 확인을 거쳐 들어온 상태이므로,
+        // teacher_lock이 제거되어도 초기화 후 마스터 게이트 복귀가 가능해야 합니다.
+        if (currentMode === 'teacher' && status !== 'game_over' && !canTeacherControlNow()) {
+            if (!guardTeacherControl('전체 초기화')) return;
+        }
+
         if(confirm("모든 금융 데이터를 초기화하고 첫 마스터 화면으로 가시겠습니까?\n\n모든 학생의 카드와 자산이 삭제됩니다.")) {
-            gameConfigRef().set({ max_teams: 8, end_score: 300, status: 'waiting', winner: "", corner_type: "", winning_stock: "", score_applied: false, big_hand_teams: [], entry_session_id: "", deal_id: "", updated_at: Date.now(), status_changed_at: Date.now() });
-            playersRef().remove().then(() => { clearSavedStudentSession(); location.reload(); });
+            resetRoomForNewClass(currentRoomCode).then(() => {
+                clearTeacherActiveRoom(currentRoomCode);
+                clearSavedStudentSession();
+                location.reload();
+            });
         }
     }
 
-    // ===== [v10 교정 완료] 파이어베이스 객체 변환 방어 루틴 주입 ➡️ 황금주 패널티 완벽 작동 =====
     function calculateOriginalScores(winnerName, cornerType, winningStock) {
         return playersRef().once('value').then((snapshot) => {
             const players = snapshot.val() || {}; let isCeilingTriggered = false;
