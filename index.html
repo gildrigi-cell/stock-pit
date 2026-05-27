@@ -1276,11 +1276,49 @@
         }
 
     
-        /* ===== v25: 멈춘 방 제어권 열기 정책 ===== */
+        /* ===== v25: 멈춘 방 시장 사용 정책 ===== */
         .teacher-takeover-btn:disabled {
             opacity: 0.48;
             cursor: not-allowed;
             filter: grayscale(0.25);
+        }
+
+    
+        /* ===== v27: 시장 잠금 6시간 자동 종료 / 방 선택 상태 표시 ===== */
+        .room-modal-choice {
+            display: grid !important;
+            grid-template-columns: 14px minmax(0, 1fr);
+            grid-template-rows: auto auto;
+            align-items: center;
+            column-gap: 8px;
+            text-align: left !important;
+        }
+        .room-modal-choice .room-status-dot {
+            grid-row: 1 / span 2;
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            display: inline-block;
+        }
+        .room-modal-choice .room-market-label {
+            font-weight: 900;
+            line-height: 1.25;
+        }
+        .room-modal-choice .room-market-status {
+            font-size: 0.78rem;
+            color: #64748b;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+        .room-modal-choice.available .room-status-dot { background:#10b981; box-shadow:0 0 0 3px rgba(16,185,129,0.16); }
+        .room-modal-choice.in_use .room-status-dot { background:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,0.16); }
+        .room-modal-choice.playing .room-status-dot { background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,0.16); }
+        .room-modal-choice.in_use,
+        .room-modal-choice.playing {
+            opacity: 0.72;
+        }
+        .teacher-takeover-btn {
+            display: none !important;
         }
 
     </style>
@@ -1362,7 +1400,7 @@
                     <li><b>라운드 마감</b>: 누군가 상한가 마감벨을 울리면 라운드가 끝나고 자산이 계산됩니다.</li>
                     <li><b>다음 라운드</b>: 학생들이 결과를 확인하고 준비 완료를 누르면 다음 거래를 시작합니다.</li>
                     <li><b>수업 종료</b>: 시간이 부족하면 <b>수업 종료 및 강제 시상식</b>으로 현재 누적 자산 기준 시상식을 열 수 있습니다.</li>
-                    <li><b>제어권 관리</b>: 다른 교사가 제어 중인 방을 열어야 할 때는 <b>교사용 관리 코드 0000</b>을 입력합니다. 단, 게임 중에는 학생 거래 보호를 위해 제어권을 가져오지 않습니다.</li>
+                    <li><b>시장 사용</b>: 다른 교사가 사용 중인 시장에는 들어갈 수 없습니다. 시장 사용 시작 후 6시간이 지나면 자동 종료되어 새 수업에 다시 사용할 수 있습니다.</li>
                 </ol>
             </div>
 
@@ -1470,7 +1508,7 @@
             <button class="home-btn" onclick="goHome(false)">🏠 홈</button>
             <div class="room-badge">🏫 <span id="teacher-room-code">한국 코스피 (KOSPI)</span></div>
         <div class="room-badge teacher-lock-badge readonly" id="teacher-lock-badge">🔐 제어권 확인 중</div>
-        <button class="teacher-takeover-btn" id="teacher-takeover-btn" onclick="takeOverTeacherLock()">교사용 코드로 제어권 열기</button>
+        <button class="teacher-takeover-btn" id="teacher-takeover-btn" onclick="takeOverTeacherLock()">사용 중</button>
         </div>
     </div>
 
@@ -1710,6 +1748,7 @@
     const ROOM_CODES = ROOM_MARKETS.map(room => room.id);
     const DEFAULT_ROOM_CODE = ROOM_CODES[0];
     const TEACHER_ADMIN_CODE = '0000';
+    const TEACHER_SESSION_LIMIT_MS = 6 * 60 * 60 * 1000;
 
     const MASTER_TEAMS = [
         { id: 1, name: "떡상", pw: "101" }, { id: 2, name: "대박", pw: "202" },
@@ -1735,7 +1774,7 @@
     let currentRoomCode = normalizeRoomCode(getRequestedRoomCode());
     let currentMode = ""; let myName = ""; let myCards = []; let selectedIndices = []; let isMarketClosed = true;
     let globalMaxTeams = 8; let globalEndScore = 300; let globalBigHands = []; let selectedTargetTeam = "";
-    let globalStatus = "waiting"; let globalEntrySessionId = ""; let globalDealId = ""; let latestPlayersData = {}; let latestGameConfig = {};
+    let globalStatus = "waiting"; let globalEntrySessionId = ""; let globalDealId = ""; let latestPlayersData = {}; let latestGameConfig = {}; let roomAvailabilityCache = {};
     let pendingBigHands = [];
     let previousGlobalStatus = "";
     let isModalOpenThisRound = false; let banTimer = null;
@@ -1773,6 +1812,119 @@
         const room = ROOM_MARKETS.find(item => item.id === code);
         return room ? room.label : ROOM_MARKETS[0].label;
     }
+
+    function roomRefForCode(code, path = '') {
+        const base = database.ref(roomPath(normalizeRoomCode(code)));
+        return path ? base.child(path) : base;
+    }
+
+    function getDefaultGameConfig() {
+        return {
+            max_teams: 8,
+            end_score: 300,
+            status: 'waiting',
+            winner: "",
+            corner_type: "",
+            winning_stock: "",
+            score_applied: false,
+            big_hand_teams: [],
+            entry_session_id: "",
+            deal_id: "",
+            updated_at: Date.now(),
+            status_changed_at: Date.now()
+        };
+    }
+
+    function isTeacherRoomExpired(lock) {
+        if (!lock || !lock.teacher_token) return false;
+        const expiresAt = Number(lock.expires_at || 0);
+        if (expiresAt) return Date.now() >= expiresAt;
+        const lockedAt = Number(lock.locked_at || lock.control_granted_at || 0);
+        return lockedAt ? (Date.now() - lockedAt >= TEACHER_SESSION_LIMIT_MS) : true;
+    }
+
+    async function getRoomAvailability(code) {
+        await ensureFirebaseReady();
+        const [lockSnap, configSnap] = await Promise.all([
+            roomRefForCode(code, 'teacher_lock').once('value'),
+            roomRefForCode(code, 'game_config').once('value')
+        ]);
+        const lock = lockSnap.val() || null;
+        const config = configSnap.val() || {};
+        const expired = isTeacherRoomExpired(lock);
+        const hasActiveLock = !!(lock && lock.teacher_token && !expired);
+
+        let state = 'available';
+        let label = '사용 가능';
+
+        if (hasActiveLock) {
+            if ((config.status || 'waiting') === 'playing') {
+                state = 'playing';
+                label = '게임 중';
+            } else {
+                state = 'in_use';
+                label = '사용 중';
+            }
+        }
+
+        return { code, lock, config, expired, state, label };
+    }
+
+    async function resetRoomForNewClass(code) {
+        await ensureFirebaseReady();
+        const normalized = normalizeRoomCode(code);
+        await Promise.all([
+            roomRefForCode(normalized, 'players').remove(),
+            roomRefForCode(normalized, 'teacher_lock').remove(),
+            roomRefForCode(normalized, 'game_config').set(getDefaultGameConfig())
+        ]);
+    }
+
+    async function prepareTeacherMarketEntry(code) {
+        const availability = await getRoomAvailability(code);
+        const myToken = getTeacherToken();
+        const lock = availability.lock || {};
+        const sameTeacherDevice = lock.teacher_token && lock.teacher_token === myToken;
+
+        if (availability.expired) {
+            await resetRoomForNewClass(code);
+            roomAvailabilityCache[code] = { state: 'available', label: '사용 가능' };
+            return true;
+        }
+
+        if (lock.teacher_token && !sameTeacherDevice) {
+            alert(`${getRoomLabel(code)} 시장은 현재 ${availability.label}입니다.\n다른 교사가 사용 중인 시장에는 들어갈 수 없습니다.\n\n시장 사용 시작 후 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.`);
+            return false;
+        }
+
+        return true;
+    }
+
+    async function refreshRoomAvailabilityForModal() {
+        if (pendingEntryMode !== 'teacher') return;
+        await ensureFirebaseReady();
+        const results = await Promise.all(ROOM_CODES.map(async code => {
+            try {
+                const data = await getRoomAvailability(code);
+                roomAvailabilityCache[code] = data;
+            } catch(e) {
+                roomAvailabilityCache[code] = { state: 'available', label: '확인 실패' };
+            }
+        }));
+        renderRoomModalChoices();
+    }
+
+    async function expireTeacherRoomIfNeeded() {
+        if (currentMode !== 'teacher' || !teacherIsController || !teacherLockState) return false;
+        if (!isTeacherRoomExpired(teacherLockState)) return false;
+
+        await resetRoomForNewClass(currentRoomCode);
+        alert('시장 사용 시간이 6시간을 지나 자동 종료되었습니다.\n학생 데이터와 게임 기록이 초기화되었고, 이 시장은 다시 사용 가능합니다.');
+        goHome(true, false);
+        return true;
+    }
+
+
 
     function getSavedRoomCode() {
         try { return localStorage.getItem('pit_room_code') || DEFAULT_ROOM_CODE; }
@@ -1834,7 +1986,7 @@
     function startTeacherUiRefreshTimer() {
         if (teacherUiRefreshTimer) return;
         teacherUiRefreshTimer = setInterval(() => {
-            if (currentMode === 'teacher') { updateTeacherLockBadge(); applyTeacherControlLockToButtons(); renderTeacherRankAndPit(latestPlayersData || {}); }
+            if (currentMode === 'teacher') { expireTeacherRoomIfNeeded(); updateTeacherLockBadge(); applyTeacherControlLockToButtons(); renderTeacherRankAndPit(latestPlayersData || {}); }
         }, 1000);
     }
 
@@ -2038,13 +2190,11 @@
     function canTeacherControlNow() {
         return currentMode === 'teacher' &&
             teacherIsController &&
-            !isTeacherControlExpired(teacherLockState, globalStatus);
+            !isTeacherRoomExpired(teacherLockState);
     }
 
     function canOpenTeacherControlByCode() {
-        if (globalStatus === 'playing') return false;
-        if (!teacherLockState || !teacherLockState.teacher_token) return true;
-        return isTeacherControlExpired(teacherLockState, globalStatus);
+        return false;
     }
 
     function isTeacherLockStale(lock) {
@@ -2078,48 +2228,23 @@
 
         badge.classList.remove('controller', 'readonly', 'locked');
 
-        if (currentMode !== 'teacher') {
-            badge.innerText = '🔐 제어권 확인 중';
-            badge.classList.add('readonly');
-            if (takeoverBtn) takeoverBtn.classList.remove('show');
-            return;
-        }
-
-        const teacherName = getTeacherNameForDisplay();
-        const statusText = getStatusDisplayText(latestGameConfig);
-        const canControl = canTeacherControlNow();
-        const canOpen = canOpenTeacherControlByCode();
-
-        badge.innerText = `${teacherName} · ${statusText}`;
-
-        if (canControl) {
-            badge.classList.add('controller');
-            if (takeoverBtn) {
-                takeoverBtn.classList.remove('show');
-                takeoverBtn.disabled = true;
-            }
-            return;
-        }
-
-        if (globalStatus === 'playing') {
-            badge.classList.add('locked');
-            if (takeoverBtn) {
-                takeoverBtn.innerText = '게임 중 제어권 이동 불가';
-                takeoverBtn.classList.add('show');
-                takeoverBtn.disabled = true;
-                takeoverBtn.title = '게임 중에는 학생 거래 보호를 위해 제어권을 가져올 수 없습니다.';
-            }
-            return;
-        }
-
-        badge.classList.add(canOpen ? 'readonly' : 'locked');
         if (takeoverBtn) {
-            takeoverBtn.innerText = canOpen ? '교사용 코드로 제어권 열기' : `제어권 열기 ${getControlRemainingMinutes()}분 후 가능`;
-            takeoverBtn.classList.add('show');
-            takeoverBtn.disabled = !canOpen;
-            takeoverBtn.title = canOpen
-                ? '게임 중이 아닌 상태가 10분 이상 지속되어 교사용 코드로 제어권을 열 수 있습니다.'
-                : '게임 중이 아닌 상태가 10분 이상 지속된 뒤에 제어권을 열 수 있습니다.';
+            takeoverBtn.classList.remove('show');
+            takeoverBtn.disabled = true;
+        }
+
+        if (currentMode !== 'teacher') {
+            badge.innerText = '🔐 시장 상태 확인 중';
+            badge.classList.add('readonly');
+            return;
+        }
+
+        if (canTeacherControlNow()) {
+            badge.innerText = `사용 중 · ${getStatusDisplayText(latestGameConfig)}`;
+            badge.classList.add('controller');
+        } else {
+            badge.innerText = '사용 가능';
+            badge.classList.add('readonly');
         }
     }
 
@@ -2161,18 +2286,23 @@
         await ensureFirebaseReady();
         const token = getTeacherToken();
         const lockRef = roomRef('teacher_lock');
+        const now = Date.now();
+
         await lockRef.transaction((lock) => {
-            const stale = isTeacherLockStale(lock);
-            if (!lock || !lock.teacher_token || lock.teacher_token === token || stale || force) {
+            const expired = isTeacherRoomExpired(lock);
+            const sameTeacher = lock && lock.teacher_token === token;
+            if (!lock || !lock.teacher_token || sameTeacher || expired || force) {
+                const lockedAt = sameTeacher && lock.locked_at && !expired ? lock.locked_at : now;
+                const expiresAt = sameTeacher && lock.expires_at && !expired ? lock.expires_at : now + TEACHER_SESSION_LIMIT_MS;
                 return {
                     teacher_token: token,
                     teacher_id: token,
-                    teacher_name: localStorage.getItem('pit_teacher_name') || '교사',
+                    teacher_name: '교사',
                     online: true,
-                    locked_at: (lock && lock.locked_at && !force) ? lock.locked_at : Date.now(),
-                    heartbeat_at: Date.now(),
-                    control_granted_at: force ? Date.now() : ((lock && lock.control_granted_at) || Date.now()),
-                    force_taken_at: force ? Date.now() : ((lock && lock.force_taken_at) || null)
+                    locked_at: lockedAt,
+                    heartbeat_at: now,
+                    expires_at: expiresAt,
+                    control_granted_at: lockedAt
                 };
             }
             return lock;
@@ -2180,7 +2310,7 @@
 
         const snap = await lockRef.get();
         teacherLockState = snap.val() || null;
-        teacherIsController = !!(teacherLockState && teacherLockState.teacher_token === token);
+        teacherIsController = !!(teacherLockState && teacherLockState.teacher_token === token && !isTeacherRoomExpired(teacherLockState));
         if (teacherIsController) startTeacherPresence();
         else stopTeacherPresence(false);
         updateTeacherLockBadge();
@@ -2243,42 +2373,7 @@
     }
 
     window.takeOverTeacherLock = async function() {
-        if (canTeacherControlNow()) {
-            alert('이미 이 방의 제어권을 가지고 있습니다.');
-            return;
-        }
-
-        await gameConfigRef().once('value').then((snap) => {
-            latestGameConfig = snap.val() || latestGameConfig || {};
-            globalStatus = latestGameConfig.status || globalStatus || 'waiting';
-        });
-
-        if (globalStatus === 'playing') {
-            alert('게임 중에는 학생 거래 보호를 위해 제어권을 가져올 수 없습니다.');
-            return;
-        }
-
-        if (!canOpenTeacherControlByCode()) {
-            alert(`게임 중이 아닌 상태가 10분 이상 지속된 뒤에 제어권을 열 수 있습니다.\n\n현재 상태: ${getStatusDisplayText(latestGameConfig)}\n남은 시간: 약 ${getControlRemainingMinutes()}분`);
-            return;
-        }
-
-        const answer = prompt(
-            `현재 ${getRoomLabel(currentRoomCode)} 방 상태\n` +
-            `${getTeacherNameForDisplay()} · ${getStatusDisplayText(latestGameConfig)}\n\n` +
-            `제어권을 열려면 교사용 관리 코드 0000을 입력하세요.`
-        );
-
-        if (answer !== TEACHER_ADMIN_CODE) {
-            alert('교사용 관리 코드가 맞지 않아 제어권을 열지 않았습니다.');
-            return;
-        }
-
-        const owned = await acquireTeacherControl(true);
-        if (owned) {
-            alert('제어권을 열었습니다.');
-            renderTeacherRankAndPit(latestPlayersData);
-        }
+        alert('이제 시장 사용 기능은 사용하지 않습니다.\n사용 중인 시장은 다른 교사가 들어갈 수 없고, 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.');
     }
 
     function startStudentPresence() {
@@ -2667,18 +2762,17 @@
         const desc = document.getElementById('room-modal-desc');
         const modal = document.getElementById('room-select-modal');
         const teacherNameField = document.getElementById('teacher-name-field');
-        const teacherNameInput = document.getElementById('teacher-name-input');
 
         if (title) title.innerText = mode === 'teacher' ? '👨‍🏫 교사 시장 선택' : '📱 학생 시장 선택';
         if (desc) desc.innerText = mode === 'teacher'
-            ? '교사 이름을 입력하고 교탁 전광판으로 사용할 시장 방을 선택하세요.'
+            ? '사용할 시장을 선택하세요. 사용 중인 시장은 입장할 수 없고, 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.'
             : '선생님이 알려준 시장 방을 선택하세요. 잘못 선택해도 홈/방 다시 선택으로 나올 수 있습니다.';
 
-        if (teacherNameField) teacherNameField.style.display = mode === 'teacher' ? 'block' : 'none';
-        if (teacherNameInput && mode === 'teacher') teacherNameInput.value = localStorage.getItem('pit_teacher_name') || '';
+        if (teacherNameField) teacherNameField.style.display = 'none';
 
         renderRoomModalChoices();
         if (modal) modal.style.display = 'flex';
+        if (mode === 'teacher') refreshRoomAvailabilityForModal();
     }
 
     function renderRoomModalChoices() {
@@ -2686,10 +2780,15 @@
         if (!grid) return;
         grid.innerHTML = '';
         ROOM_CODES.forEach(code => {
+            const info = roomAvailabilityCache[code] || { state: 'available', label: pendingEntryMode === 'teacher' ? '확인 중' : '사용 가능' };
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'room-modal-choice' + (code === pendingRoomCode ? ' active' : '');
-            btn.innerText = getRoomLabel(code);
+            btn.className = `room-modal-choice ${info.state || 'available'}` + (code === pendingRoomCode ? ' active' : '');
+            btn.innerHTML = `
+                <span class="room-status-dot"></span>
+                <span class="room-market-label">${getRoomLabel(code)}</span>
+                <span class="room-market-status">${pendingEntryMode === 'teacher' ? info.label : '선택 가능'}</span>
+            `;
             btn.onclick = () => {
                 pendingRoomCode = code;
                 renderRoomModalChoices();
@@ -2706,21 +2805,22 @@
 
     async function confirmRoomSelect() {
         const mode = pendingEntryMode;
+        const selectedRoom = normalizeRoomCode(pendingRoomCode);
+
         if (mode === 'teacher') {
-            const input = document.getElementById('teacher-name-input');
-            const teacherName = (input && input.value ? input.value.trim() : '');
-            if (!teacherName) {
-                alert('교사 이름을 입력해 주세요.');
-                if (input) input.focus();
+            const ok = await prepareTeacherMarketEntry(selectedRoom);
+            if (!ok) {
+                renderRoomModalChoices();
                 return;
             }
-            localStorage.setItem('pit_teacher_name', teacherName);
         }
-        currentRoomCode = normalizeRoomCode(pendingRoomCode);
+
+        currentRoomCode = selectedRoom;
         saveCurrentRoomCode();
         clearSavedStudentSession();
         updateRoomLabels();
         closeRoomSelectModal();
+
         try {
             if (mode === 'teacher') await showMode('teacher');
             else await enterStudentGate();
@@ -2788,12 +2888,12 @@
         if (!firstOk) return false;
 
         const answer = prompt(
-            `강제 시상식을 실행하려면 아래 시장 이름을 정확히 입력하세요.\n${getRoomLabel(currentRoomCode)}\n\n` +
+            '강제 시상식을 실행하려면 "종료"를 입력하세요.\n\n' +
             "실수 방지를 위한 최종 확인입니다."
         );
 
-        if (answer !== currentRoomCode) {
-            alert("방 번호가 맞지 않아 강제 시상식을 실행하지 않았습니다.");
+        if (answer !== '종료') {
+            alert('"종료"가 입력되지 않아 강제 시상식을 실행하지 않았습니다.');
             return false;
         }
 
