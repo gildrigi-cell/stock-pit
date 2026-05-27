@@ -255,7 +255,7 @@
         #student-section .team-tile { min-height: 54px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
 
         @media (max-width: 980px) {
-            /* 종목 점수표는 좁은 화면에서도 8개를 한 줄로 유지합니다. */
+            /* 종목 자산표는 좁은 화면에서도 8개를 한 줄로 유지합니다. */
             #student-section .stock-score-strip {
                 grid-template-columns: repeat(8, minmax(0, 1fr));
                 gap: 3px;
@@ -367,7 +367,7 @@
             .student-mid { min-height: 260px; }
         }
     
-        /* ===== v6 최종 보정: 어떤 화면에서도 점수표는 8개 한 줄 ===== */
+        /* ===== v6 최종 보정: 어떤 화면에서도 자산표는 8개 한 줄 ===== */
         #student-section .stock-score-strip {
             grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
         }
@@ -899,6 +899,31 @@
             font-size: clamp(0.62rem, 0.78vw, 0.74rem) !important;
         }
 
+    
+        /* ===== v12 시장 방 이름 / 교사 이름 / 교사 표 정리 ===== */
+        .teacher-name-field { margin: 10px 0 14px 0; padding: 12px; border-radius: 14px; background: #f8fafc; border: 1px solid #dbe3ef; }
+        .teacher-name-field label { display: block; margin-bottom: 6px; color: #0f172a; font-weight: 900; font-size: 0.9rem; }
+        .teacher-name-field input { width: 100%; box-sizing: border-box; padding: 11px 12px; border-radius: 10px; border: 2px solid #cbd5e1; font-size: 1rem; font-weight: 900; outline: none; }
+        .room-modal-panel { max-width: 780px !important; }
+        .room-modal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        .room-modal-choice { min-height: 58px; line-height: 1.25; word-break: keep-all; white-space: normal; padding: 12px 10px !important; }
+        .team-tile.claimed { opacity: 0.38; filter: grayscale(0.35); cursor: not-allowed; }
+        .team-tile.mine { opacity: 1; outline: 3px solid #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,0.12); }
+        .team-tile .team-code-line { font-size: 0.8rem; color: #64748b; margin-top: 4px; font-weight: 700; }
+        .team-tile.claimed .team-code-line { color: #334155; font-weight: 900; }
+        .rank-table th, .rank-table td { padding-left: 8px !important; padding-right: 8px !important; }
+        .teacher-status-pill, .teacher-hold-pill, .ban-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 72px; padding: 4px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 900; white-space: nowrap; }
+        .teacher-status-pill.off { background:#1e293b; color:#94a3b8; }
+        .teacher-status-pill.wait { background:#451a03; color:#fbbf24; }
+        .teacher-status-pill.ready { background:#052e16; color:#86efac; }
+        .teacher-status-pill.play { background:#082f49; color:#7dd3fc; }
+        .teacher-hold-pill.big { background:#ff9f43; color:#111827; }
+        .teacher-hold-pill.normal { background:#334155; color:#cbd5e1; }
+        .ban-pill.normal { background:#052e16; color:#86efac; }
+        .ban-pill.active { background:#7f1d1d; color:#fecaca; }
+        .wallet-emoji { font-size: 1.18rem; letter-spacing: 1px; filter: blur(4px); transition: 0.2s; white-space: normal; word-break: keep-all; }
+        .wallet-emoji:hover { filter: none; }
+
     </style>
 </head>
 <body>
@@ -907,7 +932,11 @@
 <div id="room-select-modal" class="result-overlay" style="display:none; z-index:13000;">
     <div class="room-modal-panel">
         <h2 class="room-modal-title" id="room-modal-title">🏫 수업 방 선택</h2>
-        <p class="room-modal-desc" id="room-modal-desc">교사와 학생이 같은 방 번호를 선택해야 같은 교실로 연결됩니다.</p>
+        <p class="room-modal-desc" id="room-modal-desc">교사와 학생이 같은 시장 방을 선택해야 같은 교실로 연결됩니다.</p>
+        <div id="teacher-name-field" class="teacher-name-field" style="display:none;">
+            <label for="teacher-name-input">교사 이름</label>
+            <input id="teacher-name-input" type="text" maxlength="12" placeholder="예: 이우진">
+        </div>
         <div id="room-modal-grid" class="room-modal-grid"></div>
         <div class="network-note">
             ✅ 이 화면에서는 아직 Firebase에 연결하지 않습니다.<br>
@@ -936,7 +965,7 @@
 <div id="game-over-overlay" class="result-overlay" style="display: none;">
     <div class="result-modal" style="max-width: 600px; background: #0f172a; color: white; border: 3px solid var(--accent);">
         <h1 style="color: var(--accent); font-size: 2.2rem; margin: 0 0 5px 0;">🏛️ 광기의 PIT 거래소 폐장 시상식</h1>
-        <p style="color: #94a3b8; margin-bottom: 25px;">오늘 최고의 자산가 투자자 명예의 전당!</p>
+        <p style="color: #94a3b8; margin-bottom: 25px;">오늘 최고의 자산이 투자자 명예의 전당!</p>
         <div id="podium-display" style="display: flex; justify-content: space-around; align-items: flex-end; margin: 30px 0; min-height: 180px; background:#020617; padding:20px; border-radius:15px; border:1px solid #1e293b;"></div>
         <button id="reset-btn-teacher" class="btn" style="background-color: var(--primary); width:100%; display:none;" onclick="resetToHomeForce()">🔄 전 데이터 초기화 후 마스터 게이트 복귀</button>
         <button id="close-btn-student" class="btn" style="background-color: #475569; width:100%; display:none;" onclick="closeGameOverForStudent()">👏 수고하셨습니다 (닫기)</button>
@@ -958,57 +987,77 @@
 </div>
 
 <div id="rule-guide-modal" class="result-overlay" style="display: none;">
-    <div class="result-modal" style="max-width: 600px;">
+    <div class="result-modal" style="max-width: 820px;">
         <h2 style="color: var(--accent); margin-top: 0;">📖 광기의 PIT 거래소 게임 진행 방법</h2>
         <div class="rule-modal-scroll" style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px;">
+
             <div class="guide-section">
-                <h4>1️⃣ 준비 단계</h4>
-                <p>① 교사와 학생이 첫 화면에서 같은 <b>수업 방 코드</b>를 선택합니다. 방은 최대 10개까지 동시에 분리됩니다.<br>
-                ② 교사가 <b>참여 인원·종료 점수</b>를 설정합니다.<br>
-                ③ 교사는 <b>"교사 시스템"</b> 카드를 눌러 교탁 전광판을 켜고 <b>"학생 입장 열기"</b>를 누릅니다.<br>
-                ④ 학생들은 <b>"학생 터미널"</b> 카드로 들어가 자기 투자자 타일을 선택, 식별 코드 3자리를 입력해 입장합니다.<br>
-                ⑤ 라운드가 끝나면 학생이 결과를 확인하고 <b>"다음 라운드 준비"</b>를 누릅니다.<br>
-                ⑥ 전원 준비되면 교사의 <b>"거래 시작"</b> 버튼이 활성화됩니다.</p>
+                <h4>👩‍🏫 교사용 진행 안내</h4>
+                <p><b>한 문장 설명:</b> 학생들이 같은 테마주를 모으기 위해 서로 카드를 교환하고, 한 종목을 충분히 모으면 <b>상한가 달성! 마감벨</b>을 울리는 실시간 거래 게임입니다.</p>
+                <ol style="margin:8px 0 0 20px; padding:0; line-height:1.7;">
+                    <li><b>시장 방 선택</b>: 교사 이름을 입력하고 학생들과 같은 시장 방을 선택합니다.</li>
+                    <li><b>게임 설정</b>: 참여 인원과 목표 자산을 정한 뒤 <b>학생 입장 열기</b>를 누릅니다.</li>
+                    <li><b>학생 입장 확인</b>: 학생은 투자자 계좌를 터치해 입장합니다. 이미 선택된 계좌는 반투명하게 보입니다.</li>
+                    <li><b>큰 손 지정</b>: 전원 준비 완료 후 큰 손 2명을 지정합니다. 큰 손은 10장, 일반 투자자는 9장을 받습니다.</li>
+                    <li><b>거래 시작</b>: <b>거래 시작</b>을 누르면 학생 카드가 배부되고 시장이 열립니다.</li>
+                    <li><b>라운드 마감</b>: 누군가 상한가 마감벨을 울리면 라운드가 끝나고 자산이 계산됩니다.</li>
+                    <li><b>다음 라운드</b>: 학생들이 결과를 확인하고 준비 완료를 누르면 다음 거래를 시작합니다.</li>
+                    <li><b>수업 종료</b>: 시간이 부족하면 <b>수업 종료 및 강제 시상식</b>으로 현재 누적 자산 기준 시상식을 열 수 있습니다.</li>
+                </ol>
             </div>
+
             <div class="guide-section">
-                <h4>2️⃣ 카드와 점수</h4>
-                <p>총 8종목 × 9장 + 황금주(✨) 1장 + 거래정지(🛑) 1장. 코너 선언 시 그 종목의 점수가 승자에게 부여됩니다.</p>
+                <h4>📱 학생용 진행 안내</h4>
+                <ol style="margin:8px 0 0 20px; padding:0; line-height:1.8;">
+                    <li><b>내 투자자 계좌</b>를 선택하고 준비 완료를 누릅니다.</li>
+                    <li>내 지갑의 카드를 보고 <b>같은 테마주</b>를 많이 모읍니다.</li>
+                    <li>바꾸고 싶은 카드를 1~4장 고른 뒤 <b>선택 카드 장터 등록</b>을 누릅니다.</li>
+                    <li>화면 오른쪽의 <b>내 코드 2자리</b>와 “몇 장!”을 친구에게 말합니다.</li>
+                    <li>같은 장수를 외치는 친구를 찾으면 상대를 선택하고, 친구의 코드를 입력합니다.</li>
+                    <li>양쪽이 서로의 코드를 입력하면 카드가 자동으로 교환됩니다.</li>
+                    <li>같은 테마주를 충분히 모으면 <b>상한가 달성! 마감벨 울리기</b>를 누릅니다.</li>
+                    <li>라운드 자산을 확인하고 다음 라운드를 준비합니다.</li>
+                </ol>
+            </div>
+
+            <div class="guide-section">
+                <h4>💳 카드와 자산</h4>
+                <p>테마주는 8종류입니다. 각 테마주는 9장씩 있으며, 라운드가 끝나면 달성한 테마주의 자산이 자산에 더해집니다.</p>
                 <table class="score-mini-table">
-                    <tr><td>🚀 우주</td><td><b>100점</b></td><td>💊 바이오</td><td><b>70점</b></td></tr>
-                    <tr><td>🔋 전지</td><td><b>95점</b></td><td>📱 IT</td><td><b>65점</b></td></tr>
-                    <tr><td>🤖 로봇</td><td><b>90점</b></td><td>🎬 콘텐츠</td><td><b>55점</b></td></tr>
-                    <tr><td>🚗 자율</td><td><b>80점</b></td><td>🍔 푸드</td><td><b>50점</b></td></tr>
+                    <tr><td>🚀 우주 테마주</td><td><b>100원</b></td><td>💊 바이오 테마주</td><td><b>70원</b></td></tr>
+                    <tr><td>🔋 전지 테마주</td><td><b>95원</b></td><td>📱 IT 테마주</td><td><b>65원</b></td></tr>
+                    <tr><td>🤖 로봇 테마주</td><td><b>90원</b></td><td>🎬 콘텐츠 테마주</td><td><b>55원</b></td></tr>
+                    <tr><td>🚗 자율주행 테마주</td><td><b>80원</b></td><td>🍔 푸드 테마주</td><td><b>50원</b></td></tr>
                 </table>
-                <p>매 라운드 교사가 두 투자자를 <b>큰 손(10장)</b>으로 지정 — 황금주를 받을 확률↑, 더블 코너 기회!</p>
+                <p style="margin-top:10px;">
+                    <b>✨ 황금주</b>: 상한가 달성 때 함께 가지고 있으면 자산이 2배가 될 수 있습니다.<br>
+                    <b>🛑 거래정지</b>: 마감벨을 울릴 수 없고, 라운드 종료 시 불리할 수 있으니 거래로 넘기는 전략이 필요합니다.
+                </p>
             </div>
+
             <div class="guide-section">
-                <h4>3️⃣ 거래하는 법 (3단계)</h4>
-                <p>① <b>같은 종목</b>(또는 그 종목 + 황금주/거래정지) 카드 1~4장을 터치 → "외침 장터 등록"<br>
-                ② 화면의 <b>내 코드(2자리)</b>를 큰 소리로 외치기. 같은 장 수를 외치는 투자자를 찾기<br>
-                ③ 상대 타일 터치 → 상대가 외친 <b>2자리 코드</b> 입력 → "원격 계약 체결 승인"<br>
-                <b>※ 양쪽이 모두 서로의 코드를 입력해야 거래가 체결됩니다.</b></p>
+                <h4>🔔 상한가와 마감벨</h4>
+                <p>
+                    • <b>일반 상한가</b>: 같은 테마주 9장을 모으면 해당 테마주 자산을 얻습니다.<br>
+                    • <b>황금주 2배 상한가</b>: 조건을 갖추고 황금주를 함께 보유하면 자산이 2배가 됩니다.<br>
+                    • 마감벨을 울리면 그 라운드 거래가 끝나고 모든 학생의 라운드 손익이 계산됩니다.<br>
+                    • 누적 자산이 목표 자산에 도달하면 자동으로 시상식으로 이동합니다.
+                </p>
             </div>
+
             <div class="guide-section">
-                <h4>4️⃣ 승리 조건</h4>
-                <p>• <b>노멀 코너</b>: 같은 종목 9장 → 그 종목 점수 획득<br>
-                • <b>더블 BULL 코너</b>: 9장 + 황금주(✨) → 점수 2배 (큰 손 모둠만 가능)<br>
-                • 거래정지(🛑)는 코너 선언 불가 — 반드시 떠넘기세요<br>
-                • 누군가 누적 점수 <b>종료 점수</b>에 도달하면 자동 시상식</p>
+                <h4>👩‍🏫 교사가 학생에게 설명할 때 사용할 짧은 멘트</h4>
+                <p style="font-size:1rem; line-height:1.8;">
+                    “이 게임은 같은 테마주를 모으는 거래 게임입니다. 필요 없는 카드는 장터에 등록하고, 같은 장수를 외치는 친구와 코드를 맞춰 거래합니다. 한 테마주를 충분히 모으면 상한가를 달성한 것이고, 마감벨을 울리면 그 라운드가 끝납니다. 목표 자산에 먼저 가까워지는 투자자가 승리합니다.”
+                </p>
             </div>
-            <div class="guide-section">
-                <h4>5️⃣ 교사 운영 팁</h4>
-                <p>• 게임 중 참여 인원과 종료 점수는 잠깁니다. 수업이 길어지면 <b>"시장 강제 종결 및 시상식"</b>을 확인 후 사용하세요.<br>
-                • 전광판 상단의 [준비완료]/[대기중]으로 다음 라운드 준비 상태를 파악합니다.<br>
-                • 떠드는 학생은 랭킹표의 <b>🚫 1분퇴장</b> 버튼으로 단속합니다.<br>
-                • 새 게임 시작과 다음 라운드 시작은 실수 방지를 위해 한 번 더 확인합니다.</p>
-            </div>
+
             <div class="guide-section">
                 <h4>📜 저작권 안내</h4>
                 <p>본 게임 <b>광기의 PIT 거래소 (Madness of PIT Trading)</b>는<br>
                 <b style="color:#b45309;">청완초등학교 교사 이우진 (Woojin Lee)</b>의 창작물입니다.<br>
                 © 2026 All rights reserved.<br>
-                Licensed under CC BY-NC 4.0 (저작자 표시 + 비상업적 이용)<br>
-                자유로운 교육적 사용은 환영하지만, 저작자 표시는 반드시 유지해 주세요.</p>
+                Licensed under CC BY-NC 4.0 (저작자 표시 + 비상업적 이용)</p>
             </div>
         </div>
         <button class="btn" style="background-color: #475569; width:100%; margin-top:15px;" onclick="closeRuleGuideModal()">닫기</button>
@@ -1043,7 +1092,7 @@
 
     <div class="gate-teacher-controls" style="max-width: 720px; text-align: center;">
         <select id="main-room-code" onchange="changeRoomCode(this.value)" style="display:none;">
-            <option value="1111">1111번 방</option>
+            <option value="kospi">한국 코스피 (KOSPI)</option>
         </select>
         <div style="color:#cbd5e1; line-height:1.7; font-size:0.95rem;">
             교사 시스템 또는 학생 터미널을 누르면 <b style="color:#ff9f43;">방 선택 팝업</b>이 열립니다.<br>
@@ -1059,9 +1108,9 @@
         <h1 style="color: #38bdf8; margin: 0; font-size: 1.8rem;">🏛️ 광기의 PIT 거래소 Control Dashboard</h1>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <button class="home-btn" onclick="goHome(false)">🏠 홈</button>
-            <div class="room-badge">🏫 <span id="teacher-room-code">1111</span>번 방</div>
+            <div class="room-badge">🏫 <span id="teacher-room-code">한국 코스피 (KOSPI)</span></div>
         <div class="room-badge teacher-lock-badge readonly" id="teacher-lock-badge">🔐 제어권 확인 중</div>
-        <button class="teacher-takeover-btn" id="teacher-takeover-btn" onclick="takeOverTeacherLock()">제어권 이어받기</button>
+        <button class="teacher-takeover-btn" id="teacher-takeover-btn" onclick="takeOverTeacherLock()">교사용 코드로 제어권 열기</button>
         </div>
     </div>
 
@@ -1071,7 +1120,7 @@
             <div id="teacher-ready-banner" class="ready-banner">⏳ 실시간 연결망 모니터링 중...</div>
             <div style="background: #1e293b; padding: 15px; border-radius: 12px; border: 1px solid #334155; color: white;">
                 <h4 style="margin: 0 0 10px 0; color: #38bdf8;">⚙️ 전광판 제어판</h4>
-                <p style="color:#94a3b8; font-size:0.85rem; margin:0 0 10px 0;">참여 인원과 자동 종료 점수는 여기서 설정합니다. 학생 입장을 열면 잠깁니다.<br>현재 종료 점수: <span id="teacher-end-score-display" style="color:var(--accent); font-weight:bold;">300</span>점</p>
+                <p style="color:#94a3b8; font-size:0.85rem; margin:0 0 10px 0;">참여 인원과 자동 목표 자산은 여기서 설정합니다. 학생 입장을 열면 잠깁니다.<br>현재 목표 자산: <span id="teacher-end-score-display" style="color:var(--accent); font-weight:bold;">300</span>점</p>
                 <div class="gate-teacher-controls" style="margin: 0 0 12px 0; justify-content: flex-start; background:#0f172a; border-color:#475569;">
                     <label>👨‍🏫 참여 인원:
                         <select id="main-total-teams" onchange="updateMaxTeamsOnFly()">
@@ -1080,13 +1129,13 @@
                             <option value="7">7인</option><option value="8" selected>8인</option>
                         </select>
                     </label>
-                    <label>🏁 자동 종료 점수:
+                    <label>🏁 자동 목표 자산:
                         <select id="main-end-score" onchange="updateEndScoreOnFly()">
-                            <option value="200">200점 (빠른 게임)</option>
-                            <option value="300" selected>300점 (보통)</option>
-                            <option value="500">500점</option>
-                            <option value="700">700점</option>
-                            <option value="1000">1000점</option>
+                            <option value="200">200원 (빠른 게임)</option>
+                            <option value="300" selected>300원 (보통)</option>
+                            <option value="500">500원</option>
+                            <option value="700">700원</option>
+                            <option value="1000">1000원</option>
                         </select>
                     </label>
                 </div>
@@ -1121,12 +1170,14 @@
                 <table class="rank-table">
                     <thead>
                         <tr>
-                            <th style="width: 25%;">투자자 지갑 계정</th>
-                            <th style="width: 14%;">운영</th>
-                            <th style="width: 11%;">보유</th>
-                            <th style="width: 13%;">라운드 득실</th>
-                            <th style="width: 13%;">누적 총 자산</th>
-                            <th style="width: 24%;">지갑 내부 (교사용)</th>
+                            <th style="width: 13%;">계정</th>
+                            <th style="width: 10%;">상태</th>
+                            <th style="width: 10%;">보유</th>
+                            <th style="width: 12%;">1분 거래 제한</th>
+                            <th style="width: 9%;">운영</th>
+                            <th style="width: 11%;">라운드 손익</th>
+                            <th style="width: 12%;">누적 자산</th>
+                            <th style="width: 23%;">지갑 내부</th>
                         </tr>
                     </thead>
                     <tbody id="rank-board-rows"></tbody>
@@ -1139,7 +1190,7 @@
 <div id="student-section" class="view-frame" style="display: none;">
     <div id="student-gate-waiting" class="gate-container pulse-wait" style="position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: 500; background: #0f172a; display: none;">
         <h2 style="color: var(--accent); font-size: 2rem; text-align: center;" id="waiting-msg-title">⏳ 현재 광기의 PIT 거래소 준비 중...</h2>
-        <div class="room-badge" style="margin-top: 10px;">🏫 <span id="student-waiting-room-code">1111</span>번 방</div>
+        <div class="room-badge" style="margin-top: 10px;">🏫 <span id="student-waiting-room-code">한국 코스피 (KOSPI)</span></div>
         <p style="color: #cbd5e1; font-size: 1.15rem; margin-top: 15px; text-align: center; line-height: 1.8; max-width: 720px;">
             선생님께서 교탁에서 오늘의 참여 인원을 설정하고 시장을 개장하실 때까지 잠시만 기다려 주세요.<br>
             개장되는 순간 자동으로 투자자 선택 창이 열립니다!
@@ -1153,7 +1204,7 @@
 
     <div id="student-gate-login" class="gate-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: 400; background: white; color: #334155; padding: 40px 20px; justify-content: start; display: none;">
         <h2 style="font-weight: 900; margin-bottom: 20px; font-size: 2rem; color: #0f172a; text-align:center;">📱 투자자 계좌를 터치하여 연동하세요</h2>
-        <div class="room-badge light" style="margin-bottom: 14px;">🏫 <span id="student-login-room-code">1111</span>번 방</div>
+        <div class="room-badge light" style="margin-bottom: 14px;">🏫 <span id="student-login-room-code">한국 코스피 (KOSPI)</span></div>
         <div id="team-quick-grid" class="team-quick-grid"></div>
         <button class="btn" style="background-color: #64748b; margin-top: 20px; width: 250px;" onclick="goHome(true)">🚪 메인 게이트 복귀</button>
     </div>
@@ -1164,24 +1215,24 @@
                 <h3 id="team-display" style="margin: 0; font-size: 1.1rem;">🏢 투자자 계좌 연결 대기 중</h3>
                 <button class="home-btn student" onclick="goHome(true)">🏠 홈/방 다시 선택</button>
             </div>
-            <div id="student-asset-summary" class="student-asset-summary">💰 누적 총 자산 0 / 🎯 목표 자산 300</div>
+            <div id="student-asset-summary" class="student-asset-summary">💰 누적 자산 0원 / 🎯 목표 자산 300원</div>
             <button id="student-ready-btn" class="btn" style="background-color: var(--accent); padding: 10px 25px; display:none;" onclick="clickStudentReady()">👍 거래 준비 완료!</button>
             <div id="student-ready-status" style="font-weight:bold; color:var(--success); font-size:1.1rem; display:none;">✅ 거래 대기실 진입 성공!</div>
         </div>
 
-        <div class="stock-score-strip" id="student-score-strip" aria-label="종목별 점수표">
-            <div class="stock-score-chip">🚀 우주 <b>100</b></div>
-            <div class="stock-score-chip">🔋 전지 <b>95</b></div>
-            <div class="stock-score-chip">🤖 로봇 <b>90</b></div>
-            <div class="stock-score-chip">🚗 자율 <b>80</b></div>
-            <div class="stock-score-chip">💊 바이오 <b>70</b></div>
-            <div class="stock-score-chip">📱 IT <b>65</b></div>
-            <div class="stock-score-chip">🎬 콘텐츠 <b>55</b></div>
-            <div class="stock-score-chip">🍔 푸드 <b>50</b></div>
+        <div class="stock-score-strip" id="student-score-strip" aria-label="종목별 자산표">
+            <div class="stock-score-chip">🚀 우주 테마주 <b>100</b></div>
+            <div class="stock-score-chip">🔋 전지 테마주 <b>95</b></div>
+            <div class="stock-score-chip">🤖 로봇 테마주 <b>90</b></div>
+            <div class="stock-score-chip">🚗 자율주행 테마주 <b>80</b></div>
+            <div class="stock-score-chip">💊 바이오 테마주 <b>70</b></div>
+            <div class="stock-score-chip">📱 IT 테마주 <b>65</b></div>
+            <div class="stock-score-chip">🎬 콘텐츠 테마주 <b>55</b></div>
+            <div class="stock-score-chip">🍔 푸드 테마주 <b>50</b></div>
         </div>
 
         <div class="student-mid">
-            <button id="bell-button" class="btn btn-bell" onclick="ringTheBell()">🔔 CORNER 선언! (종치기)</button>
+            <button id="bell-button" class="btn btn-bell" onclick="ringTheBell()">🔔 상한가 달성! 마감벨 울리기</button>
             <div id="portfolio-card-box" style="height: 100%; display: flex; flex-direction: column; justify-content: center;">
                 <div class="card-container" id="my-portfolio"></div>
             </div>
@@ -1279,8 +1330,21 @@
         }
         return firebaseReadyPromise;
     }
-    const ROOM_CODES = ['1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '0000'];
+    const ROOM_MARKETS = [
+        { id: 'kospi', label: '한국 코스피 (KOSPI)' },
+        { id: 'kosdaq', label: '한국 코스닥 (KOSDAQ)' },
+        { id: 'nasdaq', label: '미국 나스닥 (NASDAQ)' },
+        { id: 'sp500', label: '미국 S&P 500' },
+        { id: 'dowjones', label: '미국 다우 존스 (Dow Jones)' },
+        { id: 'kospi200', label: '한국 코스피 200 (KOSPI 200)' },
+        { id: 'nasdaq100', label: '나스닥 100 (NASDAQ 100)' },
+        { id: 'sox', label: '필라델피아 반도체 지수 (SOX)' },
+        { id: 'russell2000', label: '미국 러셀 2000 (Russell 2000)' },
+        { id: 'kedi_esg30', label: 'KEDI 혁신기업 ESG30' }
+    ];
+    const ROOM_CODES = ROOM_MARKETS.map(room => room.id);
     const DEFAULT_ROOM_CODE = ROOM_CODES[0];
+    const TEACHER_ADMIN_CODE = '0420';
 
     const MASTER_TEAMS = [
         { id: 1, name: "떡상", pw: "101" }, { id: 2, name: "대박", pw: "202" },
@@ -1290,7 +1354,7 @@
     ];
     const TEAM_COLORS = ['#fee2e2','#fef3c7','#dcfce7','#dbeafe','#ede9fe','#fce7f3','#cffafe','#f1f5f9'];
     const STOCKS = ['🚀', '🔋', '🤖', '🚗', '💊', '📱', '🎬', '🍔'];
-    const STOCK_NAMES = { '🚀':'우주', '🔋':'전지', '🤖':'로봇', '🚗':'자율', '💊':'바이오', '📱':'IT', '🎬':'콘텐츠', '🍔':'푸드', '✨':'황금주', '🛑':'거래정지' };
+    const STOCK_NAMES = { '🚀':'우주 테마주', '🔋':'전지 테마주', '🤖':'로봇 테마주', '🚗':'자율주행 테마주', '💊':'바이오 테마주', '📱':'IT 테마주', '🎬':'콘텐츠 테마주', '🍔':'푸드 테마주', '✨':'황금주', '🛑':'거래정지' };
     const STOCK_VALS = { '🚀':100, '🔋':95, '🤖':90, '🚗':80, '💊':70, '📱':65, '🎬':55, '🍔':50 };
     const BULL = '✨'; const BEAR = '🛑';
 
@@ -1331,10 +1395,16 @@
     let teacherIsController = false;
     let studentHeartbeatTimer = null;
     let studentPresenceRef = null;
+    let teacherUiRefreshTimer = null;
 
     function normalizeRoomCode(code) {
         const roomCode = String(code || '').trim();
         return ROOM_CODES.includes(roomCode) ? roomCode : DEFAULT_ROOM_CODE;
+    }
+
+    function getRoomLabel(code = currentRoomCode) {
+        const room = ROOM_MARKETS.find(item => item.id === code);
+        return room ? room.label : ROOM_MARKETS[0].label;
     }
 
     function getSavedRoomCode() {
@@ -1386,12 +1456,27 @@
     function updateRoomLabels() {
         const roomSelect = document.getElementById('main-room-code');
         if (roomSelect) roomSelect.value = currentRoomCode;
+        const label = getRoomLabel(currentRoomCode);
         ['teacher-room-code', 'student-waiting-room-code', 'student-login-room-code'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.innerText = currentRoomCode;
+            if (el) el.innerText = label;
         });
     }
 
+
+    function startTeacherUiRefreshTimer() {
+        if (teacherUiRefreshTimer) return;
+        teacherUiRefreshTimer = setInterval(() => {
+            if (currentMode === 'teacher') renderTeacherRankAndPit(latestPlayersData || {});
+        }, 1000);
+    }
+
+    function stopTeacherUiRefreshTimer() {
+        if (teacherUiRefreshTimer) {
+            clearInterval(teacherUiRefreshTimer);
+            teacherUiRefreshTimer = null;
+        }
+    }
 
     function makeToken(prefix = 'token') {
         try {
@@ -1423,6 +1508,7 @@
 
     function isTeacherLockStale(lock) {
         if (!lock || !lock.teacher_token) return true;
+        if (lock.online === false) return true;
         const last = Number(lock.heartbeat_at || lock.locked_at || 0);
         if (!last) return true;
         return (Date.now() - last) > TEACHER_LOCK_STALE_MS;
@@ -1459,24 +1545,33 @@
 
         const stale = isTeacherLockStale(teacherLockState);
         if (teacherIsController) {
-            badge.innerText = '🟢 제어권 보유';
+            badge.innerText = `🟢 ${(teacherLockState && teacherLockState.teacher_name) || '교사'} 제어 중`;
             badge.classList.add('controller');
             if (takeoverBtn) takeoverBtn.classList.remove('show');
         } else if (stale) {
             badge.innerText = '🟠 교사 연결 끊김';
             badge.classList.add('readonly');
-            if (takeoverBtn) takeoverBtn.classList.add('show');
+            if (takeoverBtn) {
+                takeoverBtn.innerText = '교사용 코드로 제어권 열기';
+                takeoverBtn.classList.add('show');
+                takeoverBtn.title = '기존 교사 연결이 끊긴 방의 제어권을 이어받습니다.';
+            }
         } else {
-            badge.innerText = '🔒 다른 교사 제어 중';
+            badge.innerText = `🔒 ${(teacherLockState && teacherLockState.teacher_name) || '다른 교사'} 제어 중`;
             badge.classList.add('locked');
-            if (takeoverBtn) takeoverBtn.classList.remove('show');
+            if (takeoverBtn) {
+                takeoverBtn.innerText = '교사용 코드로 제어권 열기';
+                takeoverBtn.classList.add('show');
+                takeoverBtn.title = '기존 교사가 화면을 닫지 않았거나 제어권을 넘겨야 할 때 사용합니다.';
+            }
         }
     }
 
     function applyTeacherControlLockToButtons() {
         if (currentMode !== 'teacher') return;
         updateTeacherLockBadge();
-        const ids = ['teacher-setup-btn', 'teacher-next-btn', 'teacher-force-end-btn', 'main-total-teams', 'main-end-score'];
+
+        const ids = ['teacher-setup-btn', 'teacher-next-btn', 'main-total-teams', 'main-end-score'];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
@@ -1489,6 +1584,18 @@
                 if (el.title === '다른 교사가 이 방을 제어 중입니다. 현재 화면은 읽기 전용입니다.') el.title = '';
             }
         });
+
+        // 수업 종료 및 강제 시상식은 게임 중에도 현재 제어 교사가 항상 사용할 수 있어야 합니다.
+        const forceEndBtn = document.getElementById('teacher-force-end-btn');
+        if (forceEndBtn) {
+            const canShowForceEnd = ['ready_check', 'playing', 'ended'].includes(globalStatus);
+            forceEndBtn.style.display = canShowForceEnd ? 'block' : 'none';
+            forceEndBtn.disabled = !teacherIsController || !canShowForceEnd;
+            forceEndBtn.classList.toggle('teacher-control-locked', !teacherIsController || !canShowForceEnd);
+            forceEndBtn.title = teacherIsController
+                ? '현재 누적 자산 기준으로 수업을 종료하고 시상식으로 이동합니다.'
+                : '다른 교사가 이 방을 제어 중입니다. 현재 화면은 읽기 전용입니다.';
+        }
     }
 
     async function acquireTeacherControl(force = false) {
@@ -1501,7 +1608,7 @@
                 return {
                     teacher_token: token,
                     teacher_id: token,
-                    teacher_name: '교사',
+                    teacher_name: localStorage.getItem('pit_teacher_name') || '교사',
                     online: true,
                     locked_at: (lock && lock.locked_at && !force) ? lock.locked_at : Date.now(),
                     heartbeat_at: Date.now(),
@@ -1545,7 +1652,7 @@
         if (teacherHeartbeatTimer) clearInterval(teacherHeartbeatTimer);
         const token = getTeacherToken();
         const lockRef = roomRef('teacher_lock');
-        lockRef.update({ teacher_token: token, online: true, heartbeat_at: Date.now() });
+        lockRef.update({ teacher_token: token, teacher_name: localStorage.getItem('pit_teacher_name') || '교사', online: true, heartbeat_at: Date.now() });
         lockRef.onDisconnect().update({ online: false, disconnected_at: Date.now() });
         teacherHeartbeatTimer = setInterval(() => {
             lockRef.once('value').then((snap) => {
@@ -1576,8 +1683,27 @@
     }
 
     window.takeOverTeacherLock = async function() {
-        const ok = confirm('기존 교사 연결이 끊긴 것으로 보입니다.\n이 방의 제어권을 이어받을까요?');
-        if (!ok) return;
+        const stale = isTeacherLockStale(teacherLockState);
+        if (teacherIsController) {
+            alert('이미 이 방의 제어권을 가지고 있습니다.');
+            return;
+        }
+
+        if (stale) {
+            const ok = confirm('기존 교사 연결이 끊긴 것으로 보입니다.\n이 방의 제어권을 이어받을까요?');
+            if (!ok) return;
+        } else {
+            const answer = prompt(
+                `현재 ${getRoomLabel(currentRoomCode)}은 다른 교사가 제어 중입니다.\n` +
+                `수업 중 제어권을 열어야 하면 교사용 관리 코드를 입력하세요.\n\n` +
+                `주의: 기존 교사 화면은 읽기 전용으로 바뀝니다.`
+            );
+            if (answer !== getRoomLabel(currentRoomCode)) {
+                alert('방 번호가 맞지 않아 제어권을 이어받지 않았습니다.');
+                return;
+            }
+        }
+
         const owned = await acquireTeacherControl(true);
         if (owned) {
             alert('제어권을 이어받았습니다.');
@@ -1963,7 +2089,7 @@
             ROOM_CODES.forEach(code => {
                 const opt = document.createElement('option');
                 opt.value = code;
-                opt.textContent = `${code}번 방`;
+                opt.textContent = getRoomLabel(code);
                 select.appendChild(opt);
             });
             select.value = ROOM_CODES.includes(selected) ? selected : currentRoomCode;
@@ -1976,10 +2102,17 @@
         const title = document.getElementById('room-modal-title');
         const desc = document.getElementById('room-modal-desc');
         const modal = document.getElementById('room-select-modal');
-        if (title) title.innerText = mode === 'teacher' ? '👨‍🏫 교사 방 선택' : '📱 학생 방 선택';
+        const teacherNameField = document.getElementById('teacher-name-field');
+        const teacherNameInput = document.getElementById('teacher-name-input');
+
+        if (title) title.innerText = mode === 'teacher' ? '👨‍🏫 교사 시장 선택' : '📱 학생 시장 선택';
         if (desc) desc.innerText = mode === 'teacher'
-            ? '교탁 전광판으로 사용할 방 번호를 선택하세요.'
-            : '선생님이 알려준 방 번호를 선택하세요. 잘못 선택해도 홈/방 다시 선택으로 나올 수 있습니다.';
+            ? '교사 이름을 입력하고 교탁 전광판으로 사용할 시장 방을 선택하세요.'
+            : '선생님이 알려준 시장 방을 선택하세요. 잘못 선택해도 홈/방 다시 선택으로 나올 수 있습니다.';
+
+        if (teacherNameField) teacherNameField.style.display = mode === 'teacher' ? 'block' : 'none';
+        if (teacherNameInput && mode === 'teacher') teacherNameInput.value = localStorage.getItem('pit_teacher_name') || '';
+
         renderRoomModalChoices();
         if (modal) modal.style.display = 'flex';
     }
@@ -1992,7 +2125,7 @@
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'room-modal-choice' + (code === pendingRoomCode ? ' active' : '');
-            btn.innerText = `${code}번 방`;
+            btn.innerText = getRoomLabel(code);
             btn.onclick = () => {
                 pendingRoomCode = code;
                 renderRoomModalChoices();
@@ -2009,6 +2142,16 @@
 
     async function confirmRoomSelect() {
         const mode = pendingEntryMode;
+        if (mode === 'teacher') {
+            const input = document.getElementById('teacher-name-input');
+            const teacherName = (input && input.value ? input.value.trim() : '');
+            if (!teacherName) {
+                alert('교사 이름을 입력해 주세요.');
+                if (input) input.focus();
+                return;
+            }
+            localStorage.setItem('pit_teacher_name', teacherName);
+        }
         currentRoomCode = normalizeRoomCode(pendingRoomCode);
         saveCurrentRoomCode();
         clearSavedStudentSession();
@@ -2034,6 +2177,7 @@
             }
             stopStudentPresence(currentMode === 'student');
             stopTeacherPresence(currentMode === 'teacher');
+            stopTeacherUiRefreshTimer();
             detachRoomListeners();
             if (studentSelfListenerRef) { studentSelfListenerRef.off(); studentSelfListenerRef = null; }
             detachTargetWatch();
@@ -2072,7 +2216,24 @@
     function closeRuleGuideModal() { document.getElementById('rule-guide-modal').style.display = 'none'; }
 
     function askForceEndConfirmation() {
-        return confirm("현재 누적 점수 기준으로 즉시 시상식을 열까요?\n\n진행 중인 라운드와 미완료 거래는 모두 마감됩니다.");
+        const firstOk = confirm(
+            "현재 누적 자산 기준으로 즉시 시상식을 열까요?\n\n" +
+            "진행 중인 라운드와 미완료 거래는 모두 마감됩니다.\n" +
+            "학생 연결은 끊기지 않고, 시상식 화면으로 이동합니다."
+        );
+        if (!firstOk) return false;
+
+        const answer = prompt(
+            `강제 시상식을 실행하려면 아래 시장 이름을 정확히 입력하세요.\n${getRoomLabel(currentRoomCode)}\n\n` +
+            "실수 방지를 위한 최종 확인입니다."
+        );
+
+        if (answer !== currentRoomCode) {
+            alert("방 번호가 맞지 않아 강제 시상식을 실행하지 않았습니다.");
+            return false;
+        }
+
+        return true;
     }
 
     function getSavedEntrySessionId() {
@@ -2333,7 +2494,7 @@
         document.getElementById('student-section').style.display = 'flex';
         document.getElementById('student-gate-login').style.display = 'none';
         document.getElementById('student-gate-waiting').style.display = 'none';
-        document.getElementById('team-display').innerText = `🏢 내 자산 계좌: ${teamLabelByName(myName)} · ${currentRoomCode}번 방`;
+        document.getElementById('team-display').innerText = `🏢 내 자산 계좌: ${teamLabelByName(myName)} · ${getRoomLabel(currentRoomCode)}`;
         buildTargetTilesLayout();
         renderCardNotice('교사가 게임을 시작해야 카드를 받습니다', '시장 개장 후 내 카드가 자동으로 표시됩니다.');
         tradeWatchBootstrapped = false;
@@ -2377,15 +2538,15 @@
     }
 
     function updateEndScoreOnFly() {
-        if (!guardTeacherControl('종료 점수 변경')) return;
+        if (!guardTeacherControl('목표 자산 변경')) return;
         const el = document.getElementById('main-end-score');
         if (globalStatus !== 'waiting') {
-            alert('학생 입장을 연 뒤에는 종료 점수를 바꾸지 않도록 잠갔습니다.\n수업을 바로 마치려면 강제 시상식 버튼을 사용해 주세요.');
+            alert('학생 입장을 연 뒤에는 목표 자산을 바꾸지 않도록 잠갔습니다.\n수업을 바로 마치려면 강제 시상식 버튼을 사용해 주세요.');
             el.value = globalEndScore;
             return;
         }
         const val = parseInt(el.value);
-        if (confirm(`자동 종료 점수를 ${val}점으로 변경하시겠습니까?\n\n이미 이 점수를 넘은 투자자가 있으면 즉시 시상식이 열립니다.`)) {
+        if (confirm(`자동 목표 자산을 ${val}원으로 변경하시겠습니까?\n\n이미 이 자산을 넘은 투자자가 있으면 즉시 시상식이 열립니다.`)) {
             gameConfigRef('end_score').set(val);
             playersRef().once('value').then((snap) => {
                 const players = snap.val() || {}; let trigger = false;
@@ -2399,35 +2560,73 @@
 
     function renderTeamQuickGrid(maxTeams, playersData) {
         const grid = document.getElementById('team-quick-grid'); if (!grid) return; grid.innerHTML = '';
+        const myDeviceToken = getStudentDeviceToken();
+
         for(let i = 1; i <= maxTeams; i++) {
             const teamInfo = MASTER_TEAMS[i-1]; if (!teamInfo) continue;
             const player = playersData[teamInfo.name];
             const isClaimed = player && player.joined && (!globalEntrySessionId || player.joined_session_id === globalEntrySessionId);
-            const isClaimedOnline = isClaimed && isStudentOnline(player);
-            if (isClaimedOnline) continue;
-            const tile = document.createElement('div'); tile.className = 'team-tile';
+            const isMine = isClaimed && player.device_token === myDeviceToken;
+            const isClaimedOnline = isClaimed && isStudentOnline(player) && !isMine;
+
+            const tile = document.createElement('div');
+            tile.className = 'team-tile' + (isClaimedOnline ? ' claimed' : '') + (isMine ? ' mine' : '');
             tile.style.background = TEAM_COLORS[(i-1) % TEAM_COLORS.length];
-            tile.innerHTML = `<div style="font-size:1.2rem;">${teamLabel(teamInfo)}</div><div style="font-size:0.8rem; color:#64748b; margin-top:4px; font-weight:normal;">식별코드: ${teamInfo.pw}</div>`;
-            tile.onclick = () => quickStudentEntry(teamInfo); grid.appendChild(tile);
+
+            const subLine = isClaimedOnline
+                ? '사용 중'
+                : (isMine ? '내가 선택한 계좌' : `식별코드: ${teamInfo.pw}`);
+
+            tile.innerHTML = `
+                <div style="font-size:1.2rem; font-weight:900;">${teamLabel(teamInfo)}</div>
+                <div class="team-code-line">${subLine}</div>
+            `;
+
+            tile.onclick = () => {
+                if (isClaimedOnline) return;
+                quickStudentEntry(teamInfo);
+            };
+            grid.appendChild(tile);
         }
         if (!grid.children.length) {
             grid.innerHTML = `<div style="grid-column:1 / -1; padding:20px; color:#64748b; font-weight:bold; text-align:center;">사용 가능한 투자자 계좌가 없습니다.</div>`;
         }
     }
 
-    function quickStudentEntry(teamInfo) {
-        const inputCode = prompt(`[${teamLabel(teamInfo)}]의 고유 식별 코드 3자리를 입력하세요:`);
-        if(teamInfo.pw !== inputCode) return alert('식별 코드가 일치하지 않습니다!');
-        playersRef(teamInfo.name).update({
+    async function quickStudentEntry(teamInfo) {
+        const myDeviceToken = getStudentDeviceToken();
+
+        if (myName && myName !== teamInfo.name) {
+            const current = latestPlayersData[myName] || {};
+            if (current.ready) {
+                alert('준비 완료 후에는 학생이 직접 계좌를 바꿀 수 없습니다. 선생님께 재입장 허용을 요청하세요.');
+                return;
+            }
+            await playersRef(myName).update({
+                joined: false,
+                ready: false,
+                online: false,
+                joined_session_id: "",
+                trade_count: 0,
+                pin_code: "",
+                offer_cards: null,
+                target_team: "",
+                typed_pin: "",
+                last_seen_at: Date.now()
+            });
+        }
+
+        await playersRef(teamInfo.name).update({
             player_name: teamInfo.name,
             joined: true,
             joined_session_id: globalEntrySessionId || "",
             ready: false,
             online: true,
-            device_token: getStudentDeviceToken(),
+            device_token: myDeviceToken,
             heartbeat_at: Date.now(),
             last_seen_at: Date.now()
         });
+
         setSavedStudentSession(teamInfo.name);
         autoSessionLogin(teamInfo.name);
         if (globalStatus === 'playing' || globalStatus === 'ready_check') { handleStudentStatusChange({ status: globalStatus }); }
@@ -2477,6 +2676,7 @@
             renderStaticTicker();
             await acquireTeacherControl(false);
             listenTeacherLock();
+            startTeacherUiRefreshTimer();
             await cleanupStaleRoomIfNeeded();
             gameConfigRef().once('value').then((snap) => { handleTeacherStatusChange(snap.val() || {}); });
             playersRef().once('value').then((snap) => {
@@ -2490,7 +2690,7 @@
         const board = document.getElementById('ticker-board'); board.innerHTML = '';
         STOCKS.forEach(s => {
             const div = document.createElement('div'); div.className = 'ticker-item';
-            div.innerHTML = `<span>${s} ${STOCK_NAMES[s]}</span><span style="color:#38bdf8; margin-left:3px;">${STOCK_VALS[s]}점</span>`;
+            div.innerHTML = `<span>${s} ${STOCK_NAMES[s]}</span><span style="color:#38bdf8; margin-left:3px;">${STOCK_VALS[s]}원</span>`;
             board.appendChild(div);
         });
     }
@@ -2527,13 +2727,13 @@
                 const warnMsg = `⚠️ 경고: 현재 ${currentRoomCode}번 방은 [${statusLabel}] 상태입니다.\n` +
                     `입장한 투자자: ${liveJoinedCount}명\n\n` +
                     `지금 새 게임을 시작하면 이 방의 진행 중인 수업이 즉시 중단되고\n` +
-                    `모든 점수와 카드가 초기화됩니다.\n\n` +
+                    `모든 자산와 카드가 초기화됩니다.\n\n` +
                     `만약 다른 반이 이 방을 쓰고 있다면 그 수업이 망가집니다.\n` +
                     `다른 빈 방(🟢)으로 옮기는 것을 권장합니다.\n\n` +
                     `정말 ${currentRoomCode}번 방에서 새 게임을 시작할까요?`;
                 if (!confirm(warnMsg)) return;
             } else {
-                const baseMsg = `오늘의 참여 인원과 종료 점수를 확정하고 ${currentRoomCode}번 방의 학생 입장을 열까요?\n\n` +
+                const baseMsg = `오늘의 참여 인원과 목표 자산을 확정하고 ${currentRoomCode}번 방의 학생 입장을 열까요?\n\n` +
                     `학생들은 계좌 선택 후 준비 완료 버튼을 누릅니다.`;
                 if (!confirm(baseMsg)) return;
             }
@@ -2541,8 +2741,8 @@
             console.warn('방 상태 확인 실패, 기존 확인 메시지로 진행:', e);
             const activeGame = globalStatus === 'playing' || globalStatus === 'ended';
             const fallbackMsg = activeGame
-                ? "새 게임을 시작하면 현재 점수, 손패, 미완료 거래가 모두 초기화됩니다.\n\n정말 새 게임으로 다시 시작할까요?"
-                : "오늘의 참여 인원과 종료 점수를 확정하고 학생 입장을 열까요?\n\n학생들은 계좌 선택 후 준비 완료 버튼을 누릅니다.";
+                ? "새 게임을 시작하면 현재 자산, 손패, 미완료 거래가 모두 초기화됩니다.\n\n정말 새 게임으로 다시 시작할까요?"
+                : "오늘의 참여 인원과 목표 자산을 확정하고 학생 입장을 열까요?\n\n학생들은 계좌 선택 후 준비 완료 버튼을 누릅니다.";
             if (!confirm(fallbackMsg)) return;
         }
 
@@ -2708,7 +2908,7 @@
             const div = document.createElement('div');
             const isSpecial = card === BULL;
             const isDanger = card === BEAR;
-            const scoreText = STOCK_VALS[card] ? `${STOCK_VALS[card]}점` : (isSpecial ? '조커' : '주의');
+            const scoreText = STOCK_VALS[card] ? `${STOCK_VALS[card]}원` : (isSpecial ? '조커' : '주의');
             div.className = `card ${selectedIndices.includes(index) ? 'selected' : ''} ${isSpecial ? 'special' : ''} ${isDanger ? 'danger' : ''}`;
             div.innerHTML = `<div class="emoji">${card}</div><div class="name">${STOCK_NAMES[card]}</div><div class="score">${scoreText}</div>`;
             div.onclick = () => {
@@ -2735,8 +2935,8 @@
         const isDoubleCorner = maxCount === 9 && myCards.includes(BULL);
         if(isNormalCorner || isBullCorner || isDoubleCorner) {
             bellBtn.style.display = 'block';
-            if(isDoubleCorner) bellBtn.innerText = "🔥 DOUBLE BULL CORNER 선언!! (2배) 🔥";
-            else bellBtn.innerText = `🔔 CORNER 선언! [${STOCK_NAMES[mainStock] || mainStock} 독점완료]`;
+            if(isDoubleCorner) bellBtn.innerText = "🔥 황금주 포함! 2배 상한가 마감벨 🔥";
+            else bellBtn.innerText = `🔔 상한가 달성! [${STOCK_NAMES[mainStock] || mainStock}] 마감벨`;
         } else { bellBtn.style.display = 'none'; }
     }
 
@@ -3022,7 +3222,7 @@
         if (!box) return;
         const total = Number(data.total_score || 0);
         const target = Number(globalEndScore || 300);
-        box.innerText = `💰 누적 총 자산 ${total} / 🎯 목표 자산 ${target}`;
+        box.innerText = `💰 누적 자산 ${total}원 / 🎯 목표 자산 ${target}원`;
         if (globalStatus === 'ended' || globalStatus === 'game_over') {
             box.classList.add('ended');
         } else {
@@ -3097,8 +3297,8 @@
         const overlay = document.getElementById('result-modal-overlay');
         const stockText = STOCK_NAMES[stock] || stock;
         const winnerLabel = teamLabelByName(winner);
-        let mainMsg = `🎉 [${winnerLabel}] 투자자가<br><span style="color:var(--primary); font-size:1.4rem;">${stockText} 독점(CORNER)</span> 성공!`;
-        if (type === 'double') mainMsg = `🔥 [${winnerLabel}] 투자자가<br><span style="color:var(--danger); font-size:1.4rem;">DOUBLE BULL CORNER (자산 2배)</span> 폭발! 🔥`;
+        let mainMsg = `🎉 [${winnerLabel}] 투자자가<br><span style="color:var(--primary); font-size:1.4rem;">${stockText} 상한가</span>를 달성했습니다!`;
+        if (type === 'double') mainMsg = `🔥 [${winnerLabel}] 투자자가<br><span style="color:var(--danger); font-size:1.4rem;">황금주 포함 2배 상한가</span>를 달성했습니다! 🔥`;
         document.getElementById('modal-winner-desc').innerHTML = mainMsg;
 
         playersRef(myName).once('value').then((snap) => {
@@ -3106,10 +3306,10 @@
             const earnBox = document.getElementById('modal-my-earn');
             if (earn >= 0) {
                 earnBox.style.backgroundColor = "#dcfce7"; earnBox.style.color = "#15803d";
-                earnBox.innerText = `📈 라운드 변동: +${earn} 자산`;
+                earnBox.innerText = `📈 라운드 손익: +${earn}원`;
             } else {
                 earnBox.style.backgroundColor = "#fee2e2"; earnBox.style.color = "#b91c1c";
-                earnBox.innerText = `📉 라운드 페널티: ${earn} 자산`;
+                earnBox.innerText = `📉 라운드 손익: ${earn}원`;
             }
             overlay.style.display = 'flex';
         });
@@ -3142,8 +3342,8 @@
             document.getElementById('winner-announcement').innerText = "⏳ 학생 준비 확인 중입니다. 전원 준비 후 거래를 시작하세요.";
         } else if(status === 'ended' && config.winner) {
             const winnerLabel = teamLabelByName(config.winner);
-            let msg = `🔔 🎉 ${winnerLabel} 매수 코너 달성! 장 마감!`;
-            if(config.corner_type === 'double') msg = `🔥 🎉 ${winnerLabel} DOUBLE BULL CORNER 폭발! 🔥`;
+            let msg = `🔔 🎉 ${winnerLabel} 상한가 달성! 장 마감!`;
+            if(config.corner_type === 'double') msg = `🔥 🎉 ${winnerLabel} 황금주 포함 2배 상한가 달성! 🔥`;
             document.getElementById('winner-announcement').innerText = msg;
             if (!config.score_applied) {
                 playBellSound();
@@ -3152,8 +3352,29 @@
                 });
             }
         } else {
-            document.getElementById('winner-announcement').innerText = "🛑 [개장 대기] 참여 인원과 종료 점수를 확인한 뒤 새 게임을 시작하세요.";
+            document.getElementById('winner-announcement').innerText = "🛑 [개장 대기] 참여 인원과 목표 자산을 확인한 뒤 새 게임을 시작하세요.";
         }
+    }
+
+
+    function getPlayerStatusInfo(p, joinedThisSession) {
+        if (!joinedThisSession) return { text: '미접속', cls: 'off' };
+        if (globalStatus === 'ready_check' || globalStatus === 'ended') {
+            return p.ready ? { text: '준비완료', cls: 'ready' } : { text: '대기중', cls: 'wait' };
+        }
+        if (globalStatus === 'playing') return { text: '거래중', cls: 'play' };
+        return { text: '대기중', cls: 'wait' };
+    }
+
+    function getBanStatusText(p) {
+        const until = Number(p.ban_until || 0);
+        const remain = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+        if (remain > 0) return `<span class="ban-pill active">제한 중 ${remain}초</span>`;
+        return '<span class="ban-pill normal">정상</span>';
+    }
+
+    function getWalletEmoji(cards) {
+        return (cards || []).slice().sort().join(' ');
     }
 
     function renderTeacherRankAndPit(players) {
@@ -3170,7 +3391,7 @@
 
         if (globalStatus === 'waiting') {
             banner.className = "ready-banner all-set";
-            banner.innerHTML = `1️⃣ 참여 인원과 종료 점수를 정한 뒤 <b>학생 입장 열기</b>를 누르세요.`;
+            banner.innerHTML = `1️⃣ 참여 인원과 목표 자산을 정한 뒤 <b>학생 입장 열기</b>를 누르세요.`;
             setupBtn.disabled = false; setupBtn.style.backgroundColor = "var(--primary)"; setupBtn.innerText = "🚪 학생 입장 열기";
             nextBtn.disabled = true; nextBtn.style.backgroundColor = "#475569"; nextBtn.innerText = "거래 시작 (대기)";
         } else if (globalStatus === 'ready_check') {
@@ -3193,6 +3414,14 @@
             banner.innerHTML = `📈 시장 작동 중입니다. 설정값은 잠겨 있으며 거래가 진행됩니다.`;
             setupBtn.disabled = true; setupBtn.style.backgroundColor = "#475569"; setupBtn.innerText = "새 게임 시작 (진행 중)";
             nextBtn.disabled = true; nextBtn.style.backgroundColor = "#475569"; nextBtn.innerText = "다음 라운드 시작 (진행 중)";
+            if (forceEndBtn) {
+                forceEndBtn.style.display = 'block';
+                forceEndBtn.disabled = !teacherIsController;
+                forceEndBtn.classList.toggle('teacher-control-locked', !teacherIsController);
+                forceEndBtn.title = teacherIsController
+                    ? '게임 중에도 현재 제어 교사는 수업 종료 및 강제 시상식을 실행할 수 있습니다.'
+                    : '다른 교사가 이 방을 제어 중입니다. 현재 화면은 읽기 전용입니다.';
+            }
         } else if (globalStatus === 'ended') {
             setupBtn.disabled = true; setupBtn.style.backgroundColor = "#475569"; setupBtn.innerText = "새 게임 시작 (진행 중)";
             if (unreadyTeams.length > 0) {
@@ -3232,22 +3461,23 @@
             const bigControl = editableBigHand
                 ? `<button class="teacher-big-hand-btn ${isBigHand ? 'active' : ''}" onclick="toggleBigHandTeam(${matchedTeam.id})">${isBigHand ? '✨ 큰 손' : '큰 손 지정'}</button>`
                 : (isBigHand ? '<span class="bighand-badge">큰 손 10장</span>' : `<span style="color:#94a3b8; font-size:0.78rem;">${globalStatus === 'playing' ? '일반' : '준비 후 지정'}</span>`);
-            let statusBadge = '<span style="color:#94a3b8; margin-left:8px;">[미접속]</span>';
             const joinedThisSession = p.joined && (!globalEntrySessionId || p.joined_session_id === globalEntrySessionId);
-            if (joinedThisSession && globalStatus === 'ready_check') statusBadge = p.ready ? '<span style="color:var(--success); margin-left:8px;">[준비완료]</span>' : '<span style="color:var(--danger); margin-left:8px;">[대기중]</span>';
-            if (joinedThisSession && globalStatus === 'playing') statusBadge = '<span style="color:#38bdf8; margin-left:8px;">[거래중]</span>';
-            if (joinedThisSession && globalStatus === 'ended') statusBadge = p.ready ? '<span style="color:var(--success); margin-left:8px;">[준비완료]</span>' : '<span style="color:var(--danger); margin-left:8px;">[대기중]</span>';
+            const statusInfo = getPlayerStatusInfo(p, joinedThisSession);
             const onlineDot = isStudentOnline(p) ? '<span class="online-dot on" title="접속 중"></span>' : '<span class="online-dot off" title="오프라인 또는 새로고침 중"></span>';
             const manageBtn = `<button class="teacher-mini-btn manage" onclick="openStudentManageMenu('${p.player_name}')">관리</button>`;
+            const holdText = isBigHand ? '큰 손 10장' : '일반 9장';
+            const holdClass = isBigHand ? 'big' : 'normal';
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td style="font-weight:bold; color:#38bdf8; text-align:left; padding-left:15px;">🏢 ${playerLabel}${statusBadge}${onlineDot}</td>
-                <td><div class="teacher-action-stack">${bigControl}${manageBtn}</div></td>
-                <td>${cards.length}장</td>
-                <td style="color:${currentRoundEarn >= 0 ? '#10b981':'#ef4444'}; font-weight:bold;">${currentRoundEarn >= 0 ? '+' : ''}${currentRoundEarn} 점</td>
-                <td style="color:#f59e0b; font-weight:bold; font-size:1.3rem;">${p.total_score || 0}점</td>
-                <td style="font-size:1rem; filter:blur(4px); transition:0.2s;" onmouseover="this.style.filter='none'" onmouseout="this.style.filter='blur(4px)'">${cards.map(c => STOCK_NAMES[c] || c).sort().join(' ')}</td>
+                <td style="font-weight:bold; color:#38bdf8; text-align:left;">🏢 ${playerLabel}${onlineDot}</td>
+                <td><span class="teacher-status-pill ${statusInfo.cls}">${statusInfo.text}</span></td>
+                <td><span class="teacher-hold-pill ${holdClass}">${holdText}</span></td>
+                <td>${getBanStatusText(p)}</td>
+                <td><div class="teacher-action-stack">${manageBtn}</div></td>
+                <td style="color:${currentRoundEarn >= 0 ? '#10b981':'#ef4444'}; font-weight:bold;">${currentRoundEarn >= 0 ? '+' : ''}${currentRoundEarn}원</td>
+                <td style="color:#f59e0b; font-weight:bold; font-size:1.25rem;">${p.total_score || 0}원</td>
+                <td><div class="wallet-emoji" title="마우스를 올리면 선명하게 보입니다.">${getWalletEmoji(cards)}</div></td>
             `;
             tbody.appendChild(tr);
         });
@@ -3296,7 +3526,7 @@
                 const block = document.createElement('div'); block.style.width = "30%"; block.style.textAlign = "center";
                 block.innerHTML = `
                     <div style="font-weight:bold; color:white; font-size:1.1rem; margin-bottom:6px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${teamLabelByName(p.player_name)}</div>
-                    <div style="color:var(--accent); font-weight:bold; margin-bottom:8px; font-size:1.05rem;">${p.total_score || 0}점</div>
+                    <div style="color:var(--accent); font-weight:bold; margin-bottom:8px; font-size:1.05rem;">${p.total_score || 0}원</div>
                     <div style="background:${item.color}; height:${item.h}; border-radius:10px 10px 0 0; color:#0f172a; font-weight:bold; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">${item.label}</div>
                 `; container.appendChild(block);
             }
@@ -3317,7 +3547,7 @@
 
     function resetToHomeForce() {
         if (!guardTeacherControl('전체 초기화')) return;
-        if(confirm("모든 금융 데이터를 초기화하고 첫 마스터 화면으로 가시겠습니까?\n\n모든 학생의 카드와 점수가 삭제됩니다.")) {
+        if(confirm("모든 금융 데이터를 초기화하고 첫 마스터 화면으로 가시겠습니까?\n\n모든 학생의 카드와 자산이 삭제됩니다.")) {
             gameConfigRef().set({ max_teams: 8, end_score: 300, status: 'waiting', winner: "", corner_type: "", winning_stock: "", score_applied: false, big_hand_teams: [], entry_session_id: "", deal_id: "", updated_at: Date.now() });
             playersRef().remove().then(() => { clearSavedStudentSession(); location.reload(); });
         }
@@ -3341,7 +3571,7 @@
                 } else {
                     let penalty = 0;
                     if(pCards.includes(BEAR)) penalty -= 20;
-                    if(pCards.includes(BULL)) penalty -= 20; // 패배 시 황금주 보유 감점 정밀 작동
+                    if(pCards.includes(BULL)) penalty -= 20; // 패배 시 황금주 보유 손실 정밀 작동
                     roundScore = penalty;
                 }
                 const newTotal = (p.total_score || 0) + roundScore;
