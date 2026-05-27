@@ -2077,12 +2077,12 @@
 
         const pw = promptTeacherRoomPassword(getRoomLabel(currentRoomCode));
         if (pw === null) {
-            alert('학생 입장 비밀번호가 설정되지 않았습니다. 교사 화면에서 [입장 비밀번호] 버튼으로 다시 설정할 수 있습니다.');
+            alert('학생 입장 비밀번호가 설정되지 않았습니다. 교사 화면 상단의 [입장 비밀번호] 버튼으로 다시 설정할 수 있습니다.');
             return false;
         }
 
-        pendingTeacherRoomPassword = pw;
         await saveTeacherRoomPassword(currentRoomCode, pw);
+        latestGameConfig = { ...(latestGameConfig || {}), room_password: pw };
         return true;
     }
 
@@ -2090,15 +2090,10 @@
         if (!guardTeacherControl('입장 비밀번호 설정')) return;
         const pw = promptTeacherRoomPassword(getRoomLabel(currentRoomCode));
         if (pw === null) return;
-        pendingTeacherRoomPassword = pw;
         await saveTeacherRoomPassword(currentRoomCode, pw);
-        await markTeacherSessionInConfig(currentRoomCode);
+        latestGameConfig = { ...(latestGameConfig || {}), room_password: pw };
         alert('학생 입장 비밀번호를 설정했습니다.');
     }
-
-
-
-
 
     async function tryRecoverSavedTeacherRoom({ silent = false } = {}) {
         const info = getTeacherActiveRoomInfo();
@@ -3209,7 +3204,7 @@
                 return;
             }
 
-            const okConfirm = confirm(`${getRoomLabel(selectedRoom)} 시장으로 입장할까요?\n\n사용 중인 시장은 수업 종료 전까지 다른 교사가 들어갈 수 없습니다.`);
+            const okConfirm = confirm(`${getRoomLabel(selectedRoom)} 시장으로 입장할까요?\n\n입장 후 학생용 비밀번호를 1번 설정합니다.\n사용 중인 시장은 수업 종료 전까지 다른 교사가 들어갈 수 없습니다.`);
             if (!okConfirm) return;
 
             const ok = await prepareTeacherMarketEntry(selectedRoom);
@@ -3218,12 +3213,6 @@
                 return;
             }
 
-            if (!currentInfo.sameTeacher) {
-                const pw = promptTeacherRoomPassword(getRoomLabel(selectedRoom));
-                if (pw === null) return;
-                pendingTeacherRoomPassword = pw;
-                await saveTeacherRoomPassword(selectedRoom, pw);
-            }
         }
 
         if (mode === 'student') {
@@ -4660,6 +4649,7 @@
             gameConfigRef().update(latestGameConfig).then(() => {
                 roomRef('teacher_lock').remove();
                 clearTeacherActiveRoom(currentRoomCode);
+                handleTeacherStatusChange(latestGameConfig);
             });
         }
     }
@@ -4697,21 +4687,29 @@
         } catch(e) {}
     }
 
-    function resetToHomeForce() {
-        const status = (latestGameConfig && latestGameConfig.status) || globalStatus || 'waiting';
+    async function resetToHomeForce() {
+        const ok = confirm("모든 금융 데이터를 초기화하고 첫 마스터 화면으로 가시겠습니까?\n\n모든 학생의 카드와 자산, 시장 비밀번호가 삭제됩니다.");
+        if (!ok) return;
 
-        // 폐장 시상식 화면에서는 이미 교사 확인을 거쳐 들어온 상태이므로,
-        // teacher_lock이 제거되어도 초기화 후 마스터 게이트 복귀가 가능해야 합니다.
-        if (currentMode === 'teacher' && status !== 'game_over' && !canTeacherControlNow()) {
-            if (!guardTeacherControl('전체 초기화')) return;
-        }
+        const code = currentRoomCode;
+        try {
+            await resetRoomForNewClass(code);
+            await roomRefForCode(code, 'teacher_lock').remove().catch(() => {});
+            clearTeacherActiveRoom(code);
+            clearSavedStudentSession();
 
-        if(confirm("모든 금융 데이터를 초기화하고 첫 마스터 화면으로 가시겠습니까?\n\n모든 학생의 카드와 자산이 삭제됩니다.")) {
-            resetRoomForNewClass(currentRoomCode).then(() => {
-                clearTeacherActiveRoom(currentRoomCode);
-                clearSavedStudentSession();
-                location.reload();
-            });
+            currentMode = '';
+            myName = '';
+            teacherIsController = false;
+            teacherLockState = null;
+            latestGameConfig = getDefaultGameConfig();
+            globalStatus = 'waiting';
+
+            const cleanPath = window.location.pathname || '/';
+            window.location.replace(`${cleanPath}?reset=${Date.now()}`);
+        } catch (err) {
+            console.error('전체 초기화 실패:', err);
+            alert('초기화 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
         }
     }
 
