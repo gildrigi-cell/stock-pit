@@ -1494,7 +1494,7 @@
     <h1 style="font-size: 2.8rem; margin: 0;">🐂📈 광기의 PIT 거래소</h1>
     <p style="color: var(--accent); font-size: 1.2rem; font-weight: bold; margin: 5px 0 0 0;">— 외쳐라, 바꿔라, 종을 울려라! —</p>
     <div class="gate-split">
-        <div class="gate-card" onclick="openRoomSelectModal('teacher')">
+        <div class="gate-card" onclick="startTeacherEntry()">
             <h2>👨‍🏫 교사 시스템</h2>
             <p>교탁 대형 TV 전광판 활성화<br>인원 설정 및 거래 제어 타워 가동</p>
         </div>
@@ -1911,7 +1911,11 @@
             entry_session_id: "",
             deal_id: "",
             updated_at: Date.now(),
-            status_changed_at: Date.now()
+            status_changed_at: Date.now(),
+            teacher_session_token: "",
+            teacher_session_active: false,
+            teacher_session_started_at: 0,
+            teacher_session_expires_at: 0
         };
     }
 
@@ -1923,6 +1927,106 @@
         return lockedAt ? (Date.now() - lockedAt >= TEACHER_SESSION_LIMIT_MS) : true;
     }
 
+    function getTeacherSessionInfoFromConfig(config = {}) {
+        const token = config.teacher_session_token || '';
+        const startedAt = Number(config.teacher_session_started_at || 0);
+        const expiresAt = Number(config.teacher_session_expires_at || 0);
+        const active = !!config.teacher_session_active && !!token && !!expiresAt && Date.now() < expiresAt;
+        const expired = !!token && !!expiresAt && Date.now() >= expiresAt;
+        return { token, startedAt, expiresAt, active, expired };
+    }
+
+    function isSameTeacherSession(code, lock = null, config = {}) {
+        const token = getTeacherToken();
+        if (lock && lock.teacher_token) return lock.teacher_token === token;
+
+        const session = getTeacherSessionInfoFromConfig(config);
+        if (session.token) return session.token === token;
+
+        return isSameTeacherCachedRoom(code, null);
+    }
+
+    function isRoomTeacherSessionExpired(lock, config = {}) {
+        const session = getTeacherSessionInfoFromConfig(config);
+        if (session.expired) return true;
+        return isTeacherRoomExpired(lock) || isRoomActivityExpired(lock, config);
+    }
+
+    async function markTeacherSessionInConfig(code) {
+        const now = Date.now();
+        const token = getTeacherToken();
+        await roomRefForCode(code, 'game_config').update({
+            teacher_session_token: token,
+            teacher_session_active: true,
+            teacher_session_started_at: now,
+            teacher_session_expires_at: now + TEACHER_SESSION_LIMIT_MS,
+            updated_at: now
+        });
+        saveTeacherActiveRoom(code);
+    }
+
+    async function clearTeacherSessionInConfig(code) {
+        await roomRefForCode(code, 'game_config').update({
+            teacher_session_token: "",
+            teacher_session_active: false,
+            teacher_session_started_at: 0,
+            teacher_session_expires_at: 0,
+            updated_at: Date.now()
+        });
+        clearTeacherActiveRoom(code);
+    }
+
+    async function tryRecoverSavedTeacherRoom({ silent = false } = {}) {
+        const info = getTeacherActiveRoomInfo();
+        if (!info.room || !info.token || info.token !== getTeacherToken()) return false;
+
+        const code = normalizeRoomCode(info.room);
+        const availability = await getRoomAvailability(code);
+        const status = (availability.config && availability.config.status) || 'waiting';
+
+        if (availability.expired || status === 'game_over') {
+            await resetRoomForNewClass(code);
+            clearTeacherActiveRoom(code);
+            return false;
+        }
+
+        if (!availability.sameTeacher) {
+            clearTeacherActiveRoom(code);
+            return false;
+        }
+
+        currentRoomCode = code;
+        saveCurrentRoomCode();
+        updateRoomLabels();
+        if (!silent) {
+            const modal = document.getElementById('room-select-modal');
+            if (modal) modal.style.display = 'none';
+        }
+        await showMode('teacher');
+        return true;
+    }
+
+    async function startTeacherEntry() {
+        try {
+            const recovered = await tryRecoverSavedTeacherRoom({ silent: false });
+            if (recovered) return;
+        } catch(e) {
+            console.warn('교사 저장 세션 복구 실패:', e);
+        }
+        openRoomSelectModal('teacher');
+    }
+
+    async function recoverSavedTeacherSessionOnLoad() {
+        try {
+            await ensureFirebaseReady();
+            await tryRecoverSavedTeacherRoom({ silent: true });
+        } catch(e) {
+            console.warn('교사 저장 세션 자동 복구 실패:', e);
+        }
+    }
+
+
+
     async function getRoomAvailability(code) {
         await ensureFirebaseReady();
         const [lockSnap, configSnap] = await Promise.all([
@@ -1933,31 +2037,24 @@
         const lock = lockSnap.val() || null;
         const config = configSnap.val() || {};
         const status = config.status || 'waiting';
-        const lockExpired = isTeacherRoomExpired(lock);
-        const activityExpired = isRoomActivityExpired(lock, config);
+        const session = getTeacherSessionInfoFromConfig(config);
+        const expired = isRoomTeacherSessionExpired(lock, config);
         const endedByTeacher = status === 'game_over';
 
         // 6시간 경과 또는 명시적 종료 후에는 새 수업용으로 사용 가능 처리
-        if (lockExpired || activityExpired || endedByTeacher) {
+        if (expired || endedByTeacher) {
             return { code, lock, config, expired: true, state: 'available', label: '사용 가능', sameTeacher: false };
         }
 
-        const sameTeacher = isSameTeacherCachedRoom(code, lock);
-        const hasActiveLock = !!(lock && lock.teacher_token && !lockExpired);
+        const sameTeacher = isSameTeacherSession(code, lock, config);
+        const hasActiveLock = !!(lock && lock.teacher_token && !isTeacherRoomExpired(lock));
+        const hasActiveSession = session.active;
+        const unfinishedClass = status !== 'waiting' || hasActiveLock || hasActiveSession;
 
         let state = 'available';
         let label = '사용 가능';
 
-        if (hasActiveLock) {
-            if (sameTeacher) {
-                state = 'available';
-                label = '내가 사용 중';
-            } else {
-                state = (status === 'playing') ? 'playing' : 'in_use';
-                label = (status === 'playing') ? '게임 중' : '사용 중';
-            }
-        } else if (status !== 'waiting') {
-            // lock이 없어도 수업이 종료되지 않은 상태면 다른 교사는 들어갈 수 없습니다.
+        if (unfinishedClass) {
             if (sameTeacher) {
                 state = 'available';
                 label = '내가 사용 중';
@@ -1995,7 +2092,7 @@
         }
 
         if (availability.state === 'in_use' || availability.state === 'playing') {
-            alert(`${getRoomLabel(code)} 시장은 현재 ${availability.label}입니다.\n수업 종료가 되지 않은 시장에는 다른 교사가 들어갈 수 없습니다.\n\n기존 교사는 같은 기기에서 다시 들어갈 수 있고, 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.`);
+            alert(`${getRoomLabel(code)} 시장은 현재 ${availability.label}입니다.\n수업 종료가 되지 않은 시장에는 다른 교사가 들어갈 수 없습니다.\n\n기존 교사는 저장된 기기로 시장 선택 없이 다시 들어갈 수 있고, 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.`);
             return false;
         }
 
@@ -2414,7 +2511,7 @@
         const snap = await lockRef.get();
         teacherLockState = snap.val() || null;
         teacherIsController = !!(teacherLockState && teacherLockState.teacher_token === token && !isTeacherRoomExpired(teacherLockState));
-        if (teacherIsController) { saveTeacherActiveRoom(currentRoomCode); startTeacherPresence(); }
+        if (teacherIsController) { await markTeacherSessionInConfig(currentRoomCode); startTeacherPresence(); }
         else stopTeacherPresence(false);
         updateTeacherLockBadge();
         applyTeacherControlLockToButtons();
@@ -4333,7 +4430,15 @@
         if (!guardTeacherControl('강제 시상식')) return;
         if(askForceEndConfirmation()) {
             currentMode = 'teacher';
-            gameConfigRef().update({ status: 'game_over', updated_at: Date.now(), status_changed_at: Date.now() }).then(() => {
+            gameConfigRef().update({
+                status: 'game_over',
+                updated_at: Date.now(),
+                status_changed_at: Date.now(),
+                teacher_session_token: "",
+                teacher_session_active: false,
+                teacher_session_started_at: 0,
+                teacher_session_expires_at: 0
+            }).then(() => {
                 roomRef('teacher_lock').remove();
                 clearTeacherActiveRoom(currentRoomCode);
             });
@@ -4441,6 +4546,8 @@
         // 저장된 학생 세션이 있을 때만 Firebase 연결을 시작합니다.
         if (hasSavedStudentSession()) {
             recoverSavedStudentSessionOnLoad();
+        } else if (getTeacherActiveRoomInfo().room) {
+            recoverSavedTeacherSessionOnLoad();
         }
     });
 </script>
