@@ -1137,6 +1137,39 @@
             color: #1d4ed8;
         }
 
+    
+        /* ===== v21: 계좌 임시 선택 후 최종 입장 ===== */
+        .account-confirm-panel {
+            margin-top: 14px;
+            padding: 12px;
+            border-radius: 16px;
+            background: #ecfdf5;
+            border: 2px solid #a7f3d0;
+            width: min(520px, calc(100% - 20px));
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .account-confirm-text {
+            color: #064e3b;
+            font-weight: 900;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        .team-tile.pending {
+            outline: 4px solid #10b981;
+            box-shadow: 0 0 0 5px rgba(16,185,129,0.16);
+            transform: translateY(-2px);
+        }
+        .team-tile .account-status-line {
+            min-height: 1em;
+        }
+        @media (orientation: portrait), (max-width: 720px) {
+            .account-confirm-panel {
+                width: 100%;
+                margin-top: 10px;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -1421,7 +1454,11 @@
         <p class="account-change-note">계좌 변경은 <b>1번만</b> 가능합니다. 모두가 계좌를 선택하기 전까지만 바꿀 수 있어요.</p>
         <div class="room-badge light" style="margin-bottom: 14px;">🏫 <span id="student-login-room-code">한국 코스피 (KOSPI)</span></div>
         <div id="team-quick-grid" class="team-quick-grid"></div>
-        <button class="btn" style="background-color: #64748b; margin-top: 20px; width: 250px;" onclick="goHome(true)">🚪 메인 게이트 복귀</button>
+        <div id="account-confirm-panel" class="account-confirm-panel" style="display:none;">
+            <div id="account-confirm-text" class="account-confirm-text">선택한 계좌가 없습니다.</div>
+            <button id="account-confirm-btn" class="btn" style="background:var(--success);" onclick="confirmStudentAccountEntry()">이 계좌로 입장</button>
+        </div>
+        <button class="btn" style="background-color: #64748b; margin-top: 14px; width: 250px;" onclick="goHome(true)">🚪 메인 게이트 복귀</button>
     </div>
 
     <div class="student-layout" id="game-section">
@@ -1610,6 +1647,8 @@
     let teacherIsController = false;
     let studentHeartbeatTimer = null;
     let studentPresenceRef = null;
+    let pendingStudentAccountName = '';
+    let pendingStudentAccountChangeUsed = false;
     let teacherUiRefreshTimer = null;
 
     function normalizeRoomCode(code) {
@@ -1753,6 +1792,65 @@
             if (!joinedThisSession) return false;
         }
         return true;
+    }
+
+
+    function resetPendingStudentAccountSelection() {
+        pendingStudentAccountName = '';
+        pendingStudentAccountChangeUsed = false;
+        updateAccountConfirmPanel();
+    }
+
+    function updateAccountConfirmPanel() {
+        const panel = document.getElementById('account-confirm-panel');
+        const textEl = document.getElementById('account-confirm-text');
+        const btn = document.getElementById('account-confirm-btn');
+        if (!panel || !textEl || !btn) return;
+
+        if (!pendingStudentAccountName) {
+            panel.style.display = 'none';
+            textEl.innerText = '선택한 계좌가 없습니다.';
+            return;
+        }
+
+        panel.style.display = 'block';
+        textEl.innerText = `${teamLabelByName(pendingStudentAccountName)} 계좌가 선택되었습니다. 다른 계좌로 바꾸기는 1번만 가능합니다.`;
+        btn.innerText = `${teamLabelByName(pendingStudentAccountName)} 계좌로 입장`;
+    }
+
+    function selectStudentAccountCandidate(teamInfo) {
+        if (!teamInfo) return;
+
+        const player = latestPlayersData[teamInfo.name] || {};
+        const claimedByOther = player.joined &&
+            (!globalEntrySessionId || player.joined_session_id === globalEntrySessionId) &&
+            player.device_token !== getStudentDeviceToken();
+
+        if (claimedByOther) return;
+
+        if (!pendingStudentAccountName) {
+            pendingStudentAccountName = teamInfo.name;
+        } else if (pendingStudentAccountName === teamInfo.name) {
+            // 같은 계좌를 다시 누른 경우는 선택 유지
+        } else {
+            if (globalStatus !== 'ready_check') {
+                alert('계좌 선택 변경은 학생 입장 및 준비 단계에서만 가능합니다.');
+                return;
+            }
+            if (areAllAccountsSelected(latestPlayersData)) {
+                alert('모두가 계좌를 선택한 뒤에는 학생이 직접 계좌를 바꿀 수 없습니다.');
+                return;
+            }
+            if (pendingStudentAccountChangeUsed) {
+                alert('계좌 변경은 1번만 가능합니다. 다시 바꾸려면 선생님께 재입장 허용을 요청하세요.');
+                return;
+            }
+            pendingStudentAccountChangeUsed = true;
+            pendingStudentAccountName = teamInfo.name;
+        }
+
+        renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
+        updateAccountConfirmPanel();
     }
 
 
@@ -2758,6 +2856,7 @@
 
     async function enterStudentGate() {
         currentMode = "student";
+        resetPendingStudentAccountSelection();
         stopRoomStatusPolling();
         await initApp();
         document.getElementById('gate-section').style.display = 'none';
@@ -2814,90 +2913,74 @@
     function renderTeamQuickGrid(maxTeams, playersData) {
         const grid = document.getElementById('team-quick-grid'); if (!grid) return; grid.innerHTML = '';
         const myDeviceToken = getStudentDeviceToken();
-        const mySelectedName = findMySelectedAccountName(playersData);
-        const changeCount = getAccountChangeCount();
-        const allSelected = areAllAccountsSelected(playersData);
 
         for(let i = 1; i <= maxTeams; i++) {
             const teamInfo = MASTER_TEAMS[i-1]; if (!teamInfo) continue;
             const player = playersData[teamInfo.name];
             const isClaimed = player && player.joined && (!globalEntrySessionId || player.joined_session_id === globalEntrySessionId);
             const isMine = isClaimed && player.device_token === myDeviceToken;
-            const isClaimedOnline = isClaimed && !isMine;
+            const isClaimedByOther = isClaimed && !isMine;
+            const isPending = pendingStudentAccountName === teamInfo.name;
 
             const tile = document.createElement('div');
-            tile.className = 'team-tile' + (isClaimedOnline ? ' claimed' : '') + (isMine ? ' mine' : '') + (!isClaimed ? ' available' : '');
+            tile.className =
+                'team-tile' +
+                (isClaimedByOther ? ' claimed' : '') +
+                (isMine ? ' mine' : '') +
+                (isPending ? ' pending' : '') +
+                (!isClaimed ? ' available' : '');
             tile.style.background = TEAM_COLORS[(i-1) % TEAM_COLORS.length];
 
-            let subLine = '';
-            if (isClaimedOnline) subLine = '사용 중';
-            else if (isMine) subLine = changeCount > 0 ? '내 계좌 · 변경 사용 완료' : '내 계좌 · 1번 변경 가능';
-            else if (mySelectedName) {
-                if (allSelected) subLine = '모두 선택 완료 · 변경 불가';
-                else if (changeCount > 0) subLine = '변경 1회 사용 완료';
-                else subLine = '한 번만 변경 가능';
-            }
+            let subLine = '선택 가능';
+            if (isClaimedByOther) subLine = '사용 중';
+            else if (isMine) subLine = '내 계좌';
+            else if (isPending) subLine = pendingStudentAccountChangeUsed ? '선택됨 · 변경 사용 완료' : '선택됨 · 1번 변경 가능';
 
             tile.innerHTML = `
                 <div class="account-name-line">${teamLabel(teamInfo)}</div>
-                ${subLine ? `<div class="account-status-line">${subLine}</div>` : ''}
+                <div class="account-status-line">${subLine}</div>
             `;
 
             tile.onclick = () => {
-                if (isClaimedOnline) return;
-                quickStudentEntry(teamInfo);
+                if (isClaimedByOther) return;
+                selectStudentAccountCandidate(teamInfo);
             };
             grid.appendChild(tile);
         }
         if (!grid.children.length) {
             grid.innerHTML = `<div style="grid-column:1 / -1; padding:20px; color:#64748b; font-weight:bold; text-align:center;">사용 가능한 투자자 계좌가 없습니다.</div>`;
         }
+        updateAccountConfirmPanel();
     }
 
-    async function quickStudentEntry(teamInfo) {
-        const myDeviceToken = getStudentDeviceToken();
-        const mySelectedName = myName || findMySelectedAccountName(latestPlayersData);
-        const selectedPlayer = mySelectedName ? (latestPlayersData[mySelectedName] || {}) : {};
-        const isChanging = !!(mySelectedName && mySelectedName !== teamInfo.name);
-
-        if (mySelectedName === teamInfo.name) {
-            setSavedStudentSession(teamInfo.name);
-            autoSessionLogin(teamInfo.name);
+    async function confirmStudentAccountEntry() {
+        if (!pendingStudentAccountName) {
+            alert('먼저 투자자 계좌를 선택해 주세요.');
             return;
         }
 
-        if (isChanging) {
-            if (selectedPlayer.ready) {
-                alert('준비 완료 후에는 학생이 직접 계좌를 바꿀 수 없습니다. 선생님께 재입장 허용을 요청하세요.');
-                return;
-            }
-            if (globalStatus !== 'ready_check') {
-                alert('계좌 변경은 학생 입장 및 준비 단계에서만 가능합니다.');
-                return;
-            }
-            if (areAllAccountsSelected(latestPlayersData)) {
-                alert('모두가 계좌를 선택한 뒤에는 학생이 직접 계좌를 바꿀 수 없습니다. 선생님께 재입장 허용을 요청하세요.');
-                return;
-            }
-            if (getAccountChangeCount() >= 1) {
-                alert('계좌 변경은 1번만 가능합니다. 다시 바꾸려면 선생님께 재입장 허용을 요청하세요.');
-                return;
-            }
+        const teamInfo = MASTER_TEAMS.find(t => t.name === pendingStudentAccountName);
+        if (!teamInfo) {
+            alert('선택한 계좌를 찾지 못했습니다. 다시 선택해 주세요.');
+            resetPendingStudentAccountSelection();
+            renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
+            return;
+        }
 
-            await playersRef(mySelectedName).update({
-                joined: false,
-                ready: false,
-                online: false,
-                joined_session_id: "",
-                trade_count: 0,
-                pin_code: "",
-                offer_cards: null,
-                target_team: "",
-                typed_pin: "",
-                device_token: "",
-                last_seen_at: Date.now()
-            });
-            setAccountChangeCount(1);
+        const myDeviceToken = getStudentDeviceToken();
+
+        const latestSnap = await playersRef(teamInfo.name).get();
+        const latestPlayer = latestSnap.val() || {};
+        const claimedByOther = latestPlayer.joined &&
+            (!globalEntrySessionId || latestPlayer.joined_session_id === globalEntrySessionId) &&
+            latestPlayer.device_token !== myDeviceToken;
+
+        if (claimedByOther) {
+            alert('방금 다른 학생이 이 계좌를 선택했습니다. 다른 계좌를 선택해 주세요.');
+            latestPlayersData[teamInfo.name] = latestPlayer;
+            resetPendingStudentAccountSelection();
+            renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
+            return;
         }
 
         await playersRef(teamInfo.name).update({
@@ -2911,9 +2994,14 @@
             last_seen_at: Date.now()
         });
 
+        if (pendingStudentAccountChangeUsed) setAccountChangeCount(1);
         setSavedStudentSession(teamInfo.name);
         autoSessionLogin(teamInfo.name);
         if (globalStatus === 'playing' || globalStatus === 'ready_check') { handleStudentStatusChange({ status: globalStatus }); }
+    }
+
+    function quickStudentEntry(teamInfo) {
+        selectStudentAccountCandidate(teamInfo);
     }
 
     function ensureMyPlayerClaim() {
