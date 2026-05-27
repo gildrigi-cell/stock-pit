@@ -1275,6 +1275,14 @@
             filter: grayscale(0.25);
         }
 
+    
+        /* ===== v25: 멈춘 방 제어권 열기 정책 ===== */
+        .teacher-takeover-btn:disabled {
+            opacity: 0.48;
+            cursor: not-allowed;
+            filter: grayscale(0.25);
+        }
+
     </style>
 </head>
 <body>
@@ -1727,7 +1735,7 @@
     let currentRoomCode = normalizeRoomCode(getRequestedRoomCode());
     let currentMode = ""; let myName = ""; let myCards = []; let selectedIndices = []; let isMarketClosed = true;
     let globalMaxTeams = 8; let globalEndScore = 300; let globalBigHands = []; let selectedTargetTeam = "";
-    let globalStatus = "waiting"; let globalEntrySessionId = ""; let globalDealId = ""; let latestPlayersData = {};
+    let globalStatus = "waiting"; let globalEntrySessionId = ""; let globalDealId = ""; let latestPlayersData = {}; let latestGameConfig = {};
     let pendingBigHands = [];
     let previousGlobalStatus = "";
     let isModalOpenThisRound = false; let banTimer = null;
@@ -1826,7 +1834,7 @@
     function startTeacherUiRefreshTimer() {
         if (teacherUiRefreshTimer) return;
         teacherUiRefreshTimer = setInterval(() => {
-            if (currentMode === 'teacher') renderTeacherRankAndPit(latestPlayersData || {});
+            if (currentMode === 'teacher') { updateTeacherLockBadge(); applyTeacherControlLockToButtons(); renderTeacherRankAndPit(latestPlayersData || {}); }
         }, 1000);
     }
 
@@ -1959,6 +1967,84 @@
     }
 
 
+
+    function getRoomStatusLabel(status = globalStatus) {
+        const map = {
+            waiting: '대기 중',
+            ready_check: '게임 준비 중',
+            playing: '게임 중',
+            ended: '라운드 종료',
+            game_over: '시상식 중'
+        };
+        return map[status] || '대기 중';
+    }
+
+    function isPlayingStatus(status = globalStatus) {
+        return status === 'playing';
+    }
+
+    function getStatusChangedAt(config = latestGameConfig) {
+        return Number(
+            (config && config.status_changed_at) ||
+            (config && config.updated_at) ||
+            (teacherLockState && teacherLockState.control_granted_at) ||
+            (teacherLockState && teacherLockState.locked_at) ||
+            Date.now()
+        );
+    }
+
+    function getElapsedMinutesFrom(ts) {
+        const base = Number(ts || Date.now());
+        return Math.max(0, Math.floor((Date.now() - base) / 60000));
+    }
+
+    function getStatusDisplayText(config = latestGameConfig) {
+        const status = (config && config.status) || globalStatus || 'waiting';
+        const label = getRoomStatusLabel(status);
+        if (status === 'playing') return label;
+        return `${label} ${getElapsedMinutesFrom(getStatusChangedAt(config))}분`;
+    }
+
+    function getTeacherNameForDisplay() {
+        return (teacherLockState && teacherLockState.teacher_name) ||
+            localStorage.getItem('pit_teacher_name') ||
+            '교사';
+    }
+
+    function getTeacherControlGrantedAt(lock = teacherLockState) {
+        return Number(
+            (lock && lock.control_granted_at) ||
+            (lock && lock.force_taken_at) ||
+            (lock && lock.locked_at) ||
+            0
+        );
+    }
+
+    function isTeacherControlExpired(lock = teacherLockState, status = globalStatus) {
+        if (!lock || !lock.teacher_token) return true;
+        if (status === 'playing') return false;
+        const grantedAt = getTeacherControlGrantedAt(lock);
+        if (!grantedAt) return true;
+        return (Date.now() - grantedAt) >= TEACHER_LOCK_STALE_MS;
+    }
+
+    function getControlRemainingMinutes(lock = teacherLockState) {
+        const grantedAt = getTeacherControlGrantedAt(lock);
+        if (!grantedAt) return 0;
+        const remain = Math.max(0, TEACHER_LOCK_STALE_MS - (Date.now() - grantedAt));
+        return Math.ceil(remain / 60000);
+    }
+
+    function canTeacherControlNow() {
+        return currentMode === 'teacher' && canTeacherControlNow() && !isTeacherControlExpired(teacherLockState, globalStatus);
+    }
+
+    function canOpenTeacherControlByCode() {
+        if (globalStatus === 'playing') return false;
+        if (!teacherLockState || !teacherLockState.teacher_token) return true;
+        return isTeacherControlExpired(teacherLockState, globalStatus);
+    }
+
     function isTeacherLockStale(lock) {
         if (!lock || !lock.teacher_token) return true;
         if (lock.online === false) return true;
@@ -1976,10 +2062,10 @@
 
     function guardTeacherControl(actionName = '이 작업') {
         if (currentMode !== 'teacher') return true;
-        if (teacherIsController) return true;
+        if (canTeacherControlNow()) return true;
         const badge = document.getElementById('teacher-lock-badge');
-        const lockMsg = badge ? badge.innerText : '다른 교사가 제어 중입니다.';
-        alert(`${actionName}은 이 방의 제어권을 가진 교사만 실행할 수 있습니다.\n\n현재 상태: ${lockMsg}`);
+        const lockMsg = badge ? badge.innerText : '다른 교사가 제어 중이거나 제어권 잠금이 만료되었습니다.';
+        alert(`${actionName}은 현재 제어권을 가진 교사만 실행할 수 있습니다.\n\n현재 상태: ${lockMsg}`);
         return false;
     }
 
@@ -1989,6 +2075,7 @@
         if (!badge) return;
 
         badge.classList.remove('controller', 'readonly', 'locked');
+
         if (currentMode !== 'teacher') {
             badge.innerText = '🔐 제어권 확인 중';
             badge.classList.add('readonly');
@@ -1996,27 +2083,41 @@
             return;
         }
 
-        const stale = isTeacherLockStale(teacherLockState);
-        if (teacherIsController) {
-            badge.innerText = `🟢 ${(teacherLockState && teacherLockState.teacher_name) || '교사'} 제어 중`;
+        const teacherName = getTeacherNameForDisplay();
+        const statusText = getStatusDisplayText(latestGameConfig);
+        const canControl = canTeacherControlNow();
+        const canOpen = canOpenTeacherControlByCode();
+
+        badge.innerText = `${teacherName} · ${statusText}`;
+
+        if (canControl) {
             badge.classList.add('controller');
-            if (takeoverBtn) takeoverBtn.classList.remove('show');
-        } else if (stale) {
-            badge.innerText = '🟠 교사 연결 끊김';
-            badge.classList.add('readonly');
             if (takeoverBtn) {
-                takeoverBtn.innerText = '교사용 코드로 제어권 열기';
-                takeoverBtn.classList.add('show');
-                takeoverBtn.title = '기존 교사 연결이 끊긴 방의 제어권을 이어받습니다.';
+                takeoverBtn.classList.remove('show');
+                takeoverBtn.disabled = true;
             }
-        } else {
-            badge.innerText = `🔒 ${(teacherLockState && teacherLockState.teacher_name) || '다른 교사'} 제어 중`;
+            return;
+        }
+
+        if (globalStatus === 'playing') {
             badge.classList.add('locked');
             if (takeoverBtn) {
-                takeoverBtn.innerText = '교사용 코드로 제어권 열기';
+                takeoverBtn.innerText = '게임 중 제어권 이동 불가';
                 takeoverBtn.classList.add('show');
-                takeoverBtn.title = '기존 교사가 화면을 닫지 않았거나 제어권을 넘겨야 할 때 사용합니다.';
+                takeoverBtn.disabled = true;
+                takeoverBtn.title = '게임 중에는 학생 거래 보호를 위해 제어권을 가져올 수 없습니다.';
             }
+            return;
+        }
+
+        badge.classList.add(canOpen ? 'readonly' : 'locked');
+        if (takeoverBtn) {
+            takeoverBtn.innerText = canOpen ? '교사용 코드로 제어권 열기' : `제어권 열기 ${getControlRemainingMinutes()}분 후 가능`;
+            takeoverBtn.classList.add('show');
+            takeoverBtn.disabled = !canOpen;
+            takeoverBtn.title = canOpen
+                ? '게임 중이 아닌 상태가 10분 이상 지속되어 교사용 코드로 제어권을 열 수 있습니다.'
+                : '게임 중이 아닌 상태가 10분 이상 지속된 뒤에 제어권을 열 수 있습니다.';
         }
     }
 
@@ -2028,7 +2129,7 @@
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
-            if (!teacherIsController) {
+            if (!canTeacherControlNow()) {
                 el.disabled = true;
                 el.classList.add('teacher-control-locked');
                 el.title = '다른 교사가 이 방을 제어 중입니다. 현재 화면은 읽기 전용입니다.';
@@ -2042,7 +2143,7 @@
         // 게임 중에도 현재 제어 교사는 사용할 수 있어야 합니다.
         const forceEndBtn = document.getElementById('teacher-force-end-btn');
         if (forceEndBtn) {
-            const canUseForceEnd = teacherIsController && globalStatus !== 'game_over';
+            const canUseForceEnd = canTeacherControlNow() && globalStatus !== 'game_over';
             forceEndBtn.style.display = 'block';
             forceEndBtn.disabled = !canUseForceEnd;
             forceEndBtn.classList.toggle('teacher-control-locked', !canUseForceEnd);
@@ -2068,6 +2169,7 @@
                     online: true,
                     locked_at: (lock && lock.locked_at && !force) ? lock.locked_at : Date.now(),
                     heartbeat_at: Date.now(),
+                    control_granted_at: force ? Date.now() : ((lock && lock.control_granted_at) || Date.now()),
                     force_taken_at: force ? Date.now() : ((lock && lock.force_taken_at) || null)
                 };
             }
@@ -2139,30 +2241,40 @@
     }
 
     window.takeOverTeacherLock = async function() {
-        const stale = isTeacherLockStale(teacherLockState);
-        if (teacherIsController) {
+        if (canTeacherControlNow()) {
             alert('이미 이 방의 제어권을 가지고 있습니다.');
             return;
         }
 
-        if (stale) {
-            const ok = confirm('기존 교사 연결이 끊긴 것으로 보입니다.\n이 방의 제어권을 이어받을까요?');
-            if (!ok) return;
-        } else {
-            const answer = prompt(
-                `현재 ${getRoomLabel(currentRoomCode)}은 다른 교사가 제어 중입니다.\n` +
-                `수업 중 제어권을 열어야 하면 교사용 관리 코드 0000을 입력하세요.\n\n` +
-                `주의: 기존 교사 화면은 읽기 전용으로 바뀝니다.`
-            );
-            if (answer !== getRoomLabel(currentRoomCode)) {
-                alert('방 번호가 맞지 않아 제어권을 이어받지 않았습니다.');
-                return;
-            }
+        await gameConfigRef().once('value').then((snap) => {
+            latestGameConfig = snap.val() || latestGameConfig || {};
+            globalStatus = latestGameConfig.status || globalStatus || 'waiting';
+        });
+
+        if (globalStatus === 'playing') {
+            alert('게임 중에는 학생 거래 보호를 위해 제어권을 가져올 수 없습니다.');
+            return;
+        }
+
+        if (!canOpenTeacherControlByCode()) {
+            alert(`게임 중이 아닌 상태가 10분 이상 지속된 뒤에 제어권을 열 수 있습니다.\n\n현재 상태: ${getStatusDisplayText(latestGameConfig)}\n남은 시간: 약 ${getControlRemainingMinutes()}분`);
+            return;
+        }
+
+        const answer = prompt(
+            `현재 ${getRoomLabel(currentRoomCode)} 방 상태\n` +
+            `${getTeacherNameForDisplay()} · ${getStatusDisplayText(latestGameConfig)}\n\n` +
+            `제어권을 열려면 교사용 관리 코드 0000을 입력하세요.`
+        );
+
+        if (answer !== TEACHER_ADMIN_CODE) {
+            alert('교사용 관리 코드가 맞지 않아 제어권을 열지 않았습니다.');
+            return;
         }
 
         const owned = await acquireTeacherControl(true);
         if (owned) {
-            alert('제어권을 이어받았습니다.');
+            alert('제어권을 열었습니다.');
             renderTeacherRankAndPit(latestPlayersData);
         }
     }
@@ -2254,7 +2366,8 @@
                     big_hand_teams: [],
                     entry_session_id: "",
                     deal_id: "",
-                    updated_at: Date.now()
+                    updated_at: Date.now(),
+                    status_changed_at: Date.now()
                 });
                 alert(`${currentRoomCode}번 방이 10분 이상 비활동 상태라 자동 정리되었습니다.`);
             }
@@ -2738,6 +2851,7 @@
         gameConfigListenerRef = gameConfigRef();
         gameConfigListenerRef.on('value', (snapshot) => {
             const config = snapshot.val() || {};
+            latestGameConfig = config;
             const nextStatus = config.status || 'waiting';
             if (previousGlobalStatus !== nextStatus && (nextStatus === 'waiting' || nextStatus === 'ready_check' || nextStatus === 'ended')) {
                 pendingBigHands = [];
@@ -3001,7 +3115,7 @@
             playersRef().once('value').then((snap) => {
                 const players = snap.val() || {}; let trigger = false;
                 Object.keys(players).forEach(k => { if ((players[k].total_score || 0) >= val) trigger = true; });
-                if (trigger) gameConfigRef().update({ status: 'game_over', updated_at: Date.now() });
+                if (trigger) gameConfigRef().update({ status: 'game_over', updated_at: Date.now(), status_changed_at: Date.now() });
             });
         } else {
             el.value = globalEndScore;
@@ -3239,7 +3353,8 @@
                 max_teams: maxTeams, end_score: endScore, status: 'ready_check',
                 winner: "", corner_type: "", winning_stock: "",
                 score_applied: false, big_hand_teams: [], entry_session_id: entrySessionId, deal_id: "",
-                updated_at: Date.now()
+                updated_at: Date.now(),
+                status_changed_at: Date.now()
             });
         });
     }
@@ -3273,7 +3388,8 @@
             '/game_config/score_applied': false,
             '/game_config/big_hand_teams': bigHandTeams,
             '/game_config/deal_id': dealId,
-            '/game_config/updated_at': Date.now()
+            '/game_config/updated_at': Date.now(),
+            '/game_config/status_changed_at': Date.now()
         };
         for(let i = 1; i <= globalMaxTeams; i++) {
             const tName = MASTER_TEAMS[i-1].name;
@@ -3417,7 +3533,7 @@
         let maxCount = 0; let targetStock = "";
         Object.keys(counts).forEach(c => { if (counts[c] > maxCount) { maxCount = counts[c]; targetStock = c; } });
         const type = (maxCount === 9 && myCards.includes(BULL)) ? "double" : "normal";
-        gameConfigRef().update({ status: 'ended', winner: myName, corner_type: type, winning_stock: targetStock });
+        gameConfigRef().update({ status: 'ended', winner: myName, corner_type: type, winning_stock: targetStock, status_changed_at: Date.now(), updated_at: Date.now() });
     }
 
     function postTrade() {
@@ -3807,8 +3923,8 @@
         const forceEndBtn = document.getElementById('teacher-force-end-btn');
         if (forceEndBtn) {
             forceEndBtn.style.display = 'block';
-            forceEndBtn.disabled = !teacherIsController || status === 'game_over';
-            forceEndBtn.classList.toggle('teacher-control-locked', !teacherIsController || status === 'game_over');
+            forceEndBtn.disabled = !canTeacherControlNow() || status === 'game_over';
+            forceEndBtn.classList.toggle('teacher-control-locked', !canTeacherControlNow() || status === 'game_over');
         }
         if (status === 'playing') {
             document.getElementById('winner-announcement').innerText = "🚀 현재 광기의 PIT 거래소 실시간 작동 중!";
@@ -3846,8 +3962,8 @@
         if (remain > 0) return `<span class="ban-pill active">제한 중 ${remain}초</span>`;
 
         const encodedName = encodeURIComponent((p && p.player_name) ? p.player_name : '');
-        const disabled = teacherIsController ? '' : 'disabled';
-        const title = teacherIsController ? '이 학생의 매매를 1분 동안 제한합니다.' : '현재 제어권을 가진 교사만 사용할 수 있습니다.';
+        const disabled = canTeacherControlNow() ? '' : 'disabled';
+        const title = canTeacherControlNow() ? '이 학생의 매매를 1분 동안 제한합니다.' : '현재 제어권을 가진 교사만 사용할 수 있습니다.';
         return `<button class="trade-limit-btn" ${disabled} title="${title}" onclick="applyOneMinuteTradeLimit(decodeURIComponent('${encodedName}'))">1분 매매 제한</button>`;
     }
 
@@ -4039,7 +4155,7 @@
     function resetToHomeForce() {
         if (!guardTeacherControl('전체 초기화')) return;
         if(confirm("모든 금융 데이터를 초기화하고 첫 마스터 화면으로 가시겠습니까?\n\n모든 학생의 카드와 자산이 삭제됩니다.")) {
-            gameConfigRef().set({ max_teams: 8, end_score: 300, status: 'waiting', winner: "", corner_type: "", winning_stock: "", score_applied: false, big_hand_teams: [], entry_session_id: "", deal_id: "", updated_at: Date.now() });
+            gameConfigRef().set({ max_teams: 8, end_score: 300, status: 'waiting', winner: "", corner_type: "", winning_stock: "", score_applied: false, big_hand_teams: [], entry_session_id: "", deal_id: "", updated_at: Date.now(), status_changed_at: Date.now() });
             playersRef().remove().then(() => { clearSavedStudentSession(); location.reload(); });
         }
     }
@@ -4077,7 +4193,7 @@
             });
             return updateRoom(updates).then(() => {
                 if (isCeilingTriggered) {
-                    return gameConfigRef().update({ status: 'game_over', score_applied: true }).then(() => true);
+                    return gameConfigRef().update({ status: 'game_over', score_applied: true, updated_at: Date.now(), status_changed_at: Date.now() }).then(() => true);
                 }
                 return false;
             });
