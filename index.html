@@ -7,17 +7,8 @@
     <meta name="author" content="청완초등학교 교사 이우진 (Woojin Lee)">
     <meta name="copyright" content="© 2026 청완초등학교 교사 이우진">
     <meta name="description" content="광기의 PIT 거래소 — 초등학교 수업용 멀티플레이어 주식 거래 게임. 청완초 교사 이우진 창작.">
-    <script>
-        (function () {
-            try {
-                if (localStorage.getItem('pit_logged_team') && localStorage.getItem('pit_entry_session_id')) {
-                    document.documentElement.classList.add('has-saved-student-session');
-                }
-            } catch (e) {}
-        })();
-    </script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <!-- Firebase SDK는 첫 화면에서 바로 불러오지 않습니다.
+         교사/학생이 방을 선택한 뒤에만 동적으로 로드하여 불필요한 네트워크 접근을 줄입니다. -->
     <style>
         :root { --bg-dark: #0f172a; --card-bg: #1e293b; --text-light: #f8fafc; --primary: #3b82f6; --success: #10b981; --danger: #ef4444; --accent: #ff9f43; }
 
@@ -87,15 +78,15 @@
         .bot-right { width: 60%; background: #f1f5f9; border-radius: 16px; padding: 15px; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }
 
         .card-container { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 10px; }
-        .card { background: #f8fafc; border: 3px solid #e2e8f0; border-radius: 12px; padding: 8px 0; cursor: pointer; user-select: none; transition: 0.15s; text-align: center; min-width: 0; }
-        .card.selected { border-color: var(--primary); background-color: #eff6ff; transform: scale(1.02); }
-        .card .emoji { font-size: 1.8rem; }
-        .card .name { font-size: 0.85rem; font-weight: bold; overflow-wrap: anywhere; }
+        .card { background: #f8fafc; border: 3px solid #e2e8f0; border-radius: 14px; padding: 14px 4px; cursor: pointer; user-select: none; transition: 0.15s; text-align: center; min-width: 0; touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; }
+        .card.selected { border-color: var(--primary); background-color: #eff6ff; transform: translateY(-2px); box-shadow: 0 10px 18px rgba(37,99,235,0.14), inset 0 0 0 1px rgba(191,219,254,0.95); z-index: 2; }
+        .card .emoji { font-size: 2.3rem; line-height: 1.1; }
+        .card .name { font-size: 1rem; font-weight: bold; overflow-wrap: anywhere; margin-top: 4px; }
 
         .team-quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-height: 250px; overflow-y: auto; width: 100%; max-width: 700px; padding: 5px; box-sizing: border-box; }
-        .team-tile { padding: 15px; border-radius: 14px; text-align: center; font-weight: bold; cursor: pointer; border: 2px solid #cbd5e1; box-shadow: 0 2px 6px rgba(0,0,0,0.03); color: #0f172a; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .team-tile { padding: 15px; border-radius: 14px; text-align: center; font-weight: bold; cursor: pointer; border: 2px solid #cbd5e1; box-shadow: 0 2px 6px rgba(0,0,0,0.03); color: #0f172a; min-width: 0; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
         .target-tile-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; overflow-y: auto; flex-grow: 1; padding: 2px; }
-        .target-tile { padding: 10px 0; background: white; border: 2px solid #cbd5e1; border-radius: 10px; text-align: center; font-weight: bold; cursor: pointer; color: #0f172a; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .target-tile { padding: 10px 0; background: white; border: 2px solid #cbd5e1; border-radius: 10px; text-align: center; font-weight: bold; cursor: pointer; color: #0f172a; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
         .target-tile.active { background: var(--primary); color: white; border-color: var(--primary); }
         .trade-step-label { font-size: 0.88rem; font-weight: bold; color:#475569; margin: 4px 0 6px 0; }
         .trade-code-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1; }
@@ -136,6 +127,160 @@
         .copyright-strip.light { background: rgba(255,255,255,0.85); color: #64748b; border-top: 1px solid #e2e8f0; }
         .copyright-inline { display: block; text-align: center; color: #94a3b8; font-size: 0.72rem; margin-top: 10px; }
 
+        /* ===== 네트워크 최소화용 방 선택 팝업 / 홈 버튼 ===== */
+        .room-modal-panel { max-width: 560px; background: #ffffff; color: #334155; border-radius: 22px; padding: 24px; width: calc(100% - 36px); box-shadow: 0 24px 80px rgba(0,0,0,0.35); }
+        .room-modal-title { margin: 0 0 8px 0; color: #0f172a; font-size: 1.45rem; font-weight: 900; text-align: center; }
+        .room-modal-desc { margin: 0 0 18px 0; color: #64748b; text-align: center; line-height: 1.6; font-size: 0.95rem; }
+        .room-modal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+        .room-modal-choice { border: 2px solid #cbd5e1; background: #f8fafc; color: #0f172a; border-radius: 14px; padding: 14px 8px; font-size: 1.05rem; font-weight: 900; cursor: pointer; transition: 0.15s; }
+        .room-modal-choice.active { border-color: var(--primary); background: #eff6ff; color: #1d4ed8; transform: scale(1.02); }
+        .room-modal-actions { display: flex; gap: 10px; margin-top: 14px; }
+        .room-modal-actions .btn { flex: 1; }
+        .home-btn { background: #334155; color: white; border: none; padding: 9px 12px; font-size: 0.95rem; border-radius: 10px; cursor: pointer; font-weight: 900; white-space: nowrap; }
+        .home-btn.student { background: #e2e8f0; color: #0f172a; }
+        .network-note { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #f8fafc; color: #64748b; font-size: 0.82rem; line-height: 1.55; text-align: left; }
+
+        /* ===== 학생 화면 가독성 보정: 14인치 웨일북 한 화면 최적화 =====
+           목표: 1366×768급 화면에서 카드, 외침 안내, 상대 선택, 코드 입력, 계약 승인까지 한 화면에 보이게 함 */
+        #student-section.view-frame { padding: 8px 12px 32px 12px; overflow: hidden; }
+        #student-section .student-layout {
+            height: calc(100vh - 40px);
+            display: grid;
+            grid-template-rows: auto auto minmax(105px, 135px) minmax(0, 1fr);
+            gap: 6px;
+            justify-content: stretch;
+            overflow: hidden;
+        }
+        #student-section .stock-score-strip {
+            display: grid;
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+            gap: 5px;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            padding: 6px;
+            box-sizing: border-box;
+        }
+        #student-section .stock-score-chip {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            min-width: 0;
+            height: 28px;
+            border-radius: 8px;
+            background: #1e293b;
+            color: #f8fafc;
+            font-size: 0.78rem;
+            font-weight: 900;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border: 1px solid #334155;
+        }
+        #student-section .stock-score-chip b { color: #7dd3fc; font-weight: 900; }
+        #student-section .student-top { min-height: 42px; height: auto; padding: 6px 10px; border-radius: 10px; }
+        #student-section .student-top h3 { font-size: 1rem !important; line-height: 1.2; }
+        #student-section .home-btn.student { padding: 7px 10px; font-size: 0.86rem; }
+        #student-section .student-mid { height: auto; min-height: 105px; padding: 7px; border-radius: 12px; overflow: hidden; }
+        #student-section #portfolio-card-box { height: 100%; justify-content: center !important; }
+        #student-section .card-container { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 5px; margin-top: 0; }
+        #student-section .card { padding: 5px 2px; border-width: 2px; border-radius: 10px; min-height: 66px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #student-section .card .emoji { font-size: 1.45rem; line-height: 1.0; }
+        #student-section .card .name { font-size: 0.72rem; margin-top: 1px; line-height: 1.05; }
+        #student-section .card .score { font-size: 0.66rem; margin-top: 2px; color: #1d4ed8; font-weight: 900; line-height: 1.0; }
+        #student-section .card.special .score { color: #b45309; }
+        #student-section .card.danger .score { color: #dc2626; }
+        #student-section .student-bot {
+            min-height: 0;
+            height: auto;
+            display: grid;
+            grid-template-rows: minmax(44px, auto) minmax(0, 1fr);
+            gap: 6px;
+            overflow: hidden;
+        }
+        #student-section .bot-left { width: 100%; min-height: 44px; padding: 6px 10px; border-radius: 12px; }
+        #student-section .bot-left #shout-display-area { font-size: 0.98rem !important; line-height: 1.25; }
+        #student-section .shout-market-call { grid-template-columns: minmax(0, 1fr) 140px; gap: 8px; }
+        #student-section .shout-call-block,
+        #student-section .shout-code-block { min-height: 54px; padding: 6px 8px; border-radius: 10px; }
+        #student-section .shout-call-main,
+        #student-section .shout-code-value { font-size: 1rem; line-height: 1.15; }
+        #student-section .shout-code-label { font-size: 0.76rem; }
+        #student-section .bot-right {
+            width: 100%;
+            min-height: 0;
+            padding: 7px 10px;
+            border-radius: 12px;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+            gap: 6px;
+            overflow: hidden;
+        }
+        #student-section #trade-submit-btn,
+        #student-section #trade-cancel-btn { padding: 8px 10px !important; font-size: 0.92rem !important; }
+        #student-section #action-zone {
+            display: grid !important;
+            grid-template-rows: auto auto auto;
+            gap: 6px;
+            min-height: 0;
+            flex-grow: 0 !important;
+            overflow: visible !important;
+        }
+        #student-section .trade-step-label { font-size: 0.95rem; margin: 0; color: #0f172a; font-weight: 900; }
+        #student-section .target-tile-grid {
+            grid-template-columns: repeat(4, minmax(115px, 1fr));
+            grid-auto-rows: minmax(42px, auto);
+            gap: 8px;
+            max-height: none;
+            overflow: visible;
+            flex-grow: 0;
+            align-content: start;
+        }
+        #student-section .target-tile { padding: 8px 6px; font-size: 0.98rem; border-radius: 12px; min-height: 42px; }
+        #student-section .trade-code-row {
+            margin-top: 0;
+            padding-top: 0;
+            border-top: none;
+            display: grid;
+            grid-template-columns: auto minmax(150px, 220px);
+            justify-content: start;
+            align-items: center;
+            gap: 10px;
+        }
+        #student-section .trade-code-row span { font-size: 0.92rem; }
+        #student-section #target-pin-input { height: 36px; width: 100% !important; font-size: 1.02rem !important; box-sizing: border-box; }
+        #student-section #action-zone > button.btn { margin-top: 0 !important; padding: 8px !important; font-size: 0.95rem !important; }
+        #student-section .team-quick-grid { grid-template-columns: repeat(4, minmax(120px, 1fr)); max-width: 760px; }
+        #student-section .team-tile { min-height: 54px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+
+        @media (max-width: 980px) {
+            /* 종목 점수표는 좁은 화면에서도 8개를 한 줄로 유지합니다. */
+            #student-section .stock-score-strip {
+                grid-template-columns: repeat(8, minmax(0, 1fr));
+                gap: 3px;
+                padding: 4px;
+            }
+            #student-section .stock-score-chip {
+                height: 24px;
+                font-size: clamp(0.56rem, 1.15vw, 0.72rem);
+                gap: 2px;
+                padding: 0 2px;
+            }
+            #student-section .card-container { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+            #student-section .student-layout { grid-template-rows: auto auto minmax(150px, 180px) minmax(0, 1fr); }
+        }
+
+        @media (max-width: 560px) {
+            .room-modal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .room-modal-choice { font-size: 0.95rem; padding: 12px 4px; }
+            .room-modal-actions { flex-direction: column; }
+            .target-tile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+            .target-tile { font-size: 0.9rem; padding: 13px 4px; }
+            .student-top { min-height: 50px; padding: 8px; }
+            .student-mid { min-height: 180px; }
+        }
+
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
         @keyframes softPulse { 0%, 100% { opacity: 0.82; transform: scale(1); } 50% { opacity: 1; transform: scale(1.025); } }
 
@@ -173,10 +318,10 @@
         }
 
         @media (max-width: 560px) {
-            .card-container { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
-            .card { border-width: 2px; border-radius: 10px; padding: 6px 0; }
-            .card .emoji { font-size: 1.45rem; }
-            .card .name { font-size: 0.72rem; }
+            .card-container { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+            .card { border-width: 2px; border-radius: 12px; padding: 12px 2px; }
+            .card .emoji { font-size: 1.95rem; line-height: 1.1; }
+            .card .name { font-size: 0.88rem; }
             #student-gate-login { padding: 20px 12px !important; box-sizing: border-box; overflow-y: auto; }
             #student-gate-login h2 { font-size: 1.25rem !important; line-height: 1.3; margin: 0 0 12px 0 !important; text-align: center; }
             .team-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: none; }
@@ -190,7 +335,7 @@
             #target-pin-input { width: 100% !important; box-sizing: border-box; }
             .shout-call-main, .shout-code-value { font-size: 1.02rem; }
             .shout-call-block, .shout-code-block { min-height: 74px; padding: 8px 4px; }
-            .student-mid { min-height: 220px; padding: 10px; }
+            .student-mid { min-height: 280px; padding: 12px; }
             .bot-right { padding: 10px; }
             .result-modal { width: calc(100% - 32px); padding: 18px; }
         }
@@ -215,16 +360,576 @@
             .big-hand-choice { font-size: 0.75rem; }
             .pit-room-card h3 { font-size: 1.1rem; }
             .pit-room-card { padding: 8px; }
+            .card { padding: 10px 1px; border-radius: 11px; }
+            .card .emoji { font-size: 1.75rem; }
+            .card .name { font-size: 0.78rem; }
+            .card-container { gap: 5px; }
+            .student-mid { min-height: 260px; }
         }
+    
+        /* ===== v6 최종 보정: 어떤 화면에서도 점수표는 8개 한 줄 ===== */
+        #student-section .stock-score-strip {
+            grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
+        }
+        @media (max-width: 560px) {
+            #student-section .stock-score-strip {
+                grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
+                gap: 2px;
+                padding: 3px;
+            }
+            #student-section .stock-score-chip {
+                height: 22px;
+                font-size: clamp(0.48rem, 2.1vw, 0.62rem);
+                border-radius: 6px;
+                gap: 1px;
+                padding: 0 1px;
+            }
+            #student-section .stock-score-chip b {
+                font-size: 0.95em;
+            }
+        }
+
+    
+        /* ===== v7 최종 학생 화면: 카드 5×2, 외침 50%/코드 20%/등록 30%, 거래 80%/20% ===== */
+        #student-section.view-frame {
+            height: 100vh !important;
+            padding: 8px 12px 32px 12px !important;
+            overflow: hidden !important;
+        }
+
+        #student-section .student-layout {
+            height: calc(100vh - 40px) !important;
+            display: grid !important;
+            grid-template-rows: 44px 32px 218px minmax(0, 1fr) !important;
+            gap: 8px !important;
+            overflow: hidden !important;
+            justify-content: stretch !important;
+        }
+
+        #student-section .student-top {
+            min-height: 0 !important;
+            height: 44px !important;
+            padding: 6px 10px !important;
+            border-radius: 12px !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) auto auto !important;
+            gap: 8px !important;
+            align-items: center !important;
+        }
+
+        #student-section .student-top h3,
+        #student-section #team-display {
+            font-size: 1rem !important;
+            line-height: 1.15 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        #student-section .stock-score-strip {
+            height: 32px !important;
+            display: grid !important;
+            grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
+            gap: 5px !important;
+            padding: 4px !important;
+            overflow: hidden !important;
+            border-radius: 10px !important;
+        }
+
+        #student-section .stock-score-chip {
+            height: 24px !important;
+            font-size: clamp(0.62rem, 0.9vw, 0.78rem) !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            padding: 0 2px !important;
+        }
+
+        #student-section .student-mid {
+            height: 218px !important;
+            min-height: 0 !important;
+            padding: 10px !important;
+            border-radius: 16px !important;
+            overflow: hidden !important;
+        }
+
+        #student-section #portfolio-card-box {
+            height: 100% !important;
+            justify-content: center !important;
+        }
+
+        #student-section .card-container {
+            height: 100% !important;
+            display: grid !important;
+            grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+            grid-template-rows: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+            margin-top: 0 !important;
+        }
+
+        #student-section .card {
+            min-height: 0 !important;
+            height: 100% !important;
+            padding: 5px 2px !important;
+            border-width: 2px !important;
+            border-radius: 13px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 3px !important;
+        }
+
+        #student-section .card .emoji {
+            font-size: clamp(1.45rem, 2vw, 1.75rem) !important;
+            line-height: 1 !important;
+        }
+
+        #student-section .card .name {
+            font-size: clamp(0.75rem, 1vw, 0.9rem) !important;
+            line-height: 1.05 !important;
+            margin: 0 !important;
+        }
+
+        #student-section .card .score {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-width: 44px !important;
+            height: 20px !important;
+            margin-top: 1px !important;
+            padding: 0 6px !important;
+            border-radius: 999px !important;
+            background: #0f172a !important;
+            color: #fef08a !important;
+            font-size: 0.68rem !important;
+            font-weight: 900 !important;
+            line-height: 1 !important;
+        }
+
+        #student-section .student-bot.compact-student-trade {
+            min-height: 0 !important;
+            height: 100% !important;
+            display: grid !important;
+            grid-template-rows: 42px minmax(0, 1fr) !important;
+            gap: 8px !important;
+            overflow: hidden !important;
+        }
+
+        #student-section .shout-action-strip {
+            display: grid !important;
+            grid-template-columns: 5fr 2fr 3fr !important;
+            gap: 8px !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }
+
+        #student-section .bot-left,
+        #student-section .inline-code-box,
+        #student-section .trade-submit-cell {
+            width: 100% !important;
+            height: 42px !important;
+            min-height: 0 !important;
+            border-radius: 13px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+        }
+
+        #student-section .bot-left {
+            padding: 0 10px !important;
+            background: #fee2e2 !important;
+            border: 2px solid #fecaca !important;
+            color: #b91c1c !important;
+            text-align: center !important;
+        }
+
+        #student-section #shout-display-area {
+            width: 100% !important;
+            color: #b91c1c !important;
+            font-size: clamp(0.82rem, 1.05vw, 0.98rem) !important;
+            font-weight: 900 !important;
+            line-height: 1.1 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        #student-section .inline-code-box {
+            background: #020617 !important;
+            border: 2px solid #334155 !important;
+            color: #fef08a !important;
+            gap: 8px !important;
+            font-weight: 900 !important;
+        }
+
+        #student-section .inline-code-box span {
+            color: #cbd5e1 !important;
+            font-size: 0.88rem !important;
+            white-space: nowrap !important;
+        }
+
+        #student-section .inline-code-box strong {
+            color: #fef08a !important;
+            font-size: 1.15rem !important;
+            line-height: 1 !important;
+            letter-spacing: 0.02em !important;
+        }
+
+        #student-section .trade-submit-cell {
+            background: transparent !important;
+            gap: 6px !important;
+        }
+
+        #student-section #trade-submit-btn,
+        #student-section #trade-cancel-btn {
+            width: 100% !important;
+            height: 42px !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            padding: 0 8px !important;
+            border-radius: 13px !important;
+            font-size: clamp(0.82rem, 1vw, 1rem) !important;
+            font-weight: 900 !important;
+            white-space: nowrap !important;
+        }
+
+        #student-section #trade-submit-btn { background: var(--success) !important; }
+        #student-section #trade-cancel-btn { background: #64748b !important; }
+
+        #student-section #action-zone.trade-main-area {
+            display: grid !important;
+            grid-template-columns: 4fr 1fr !important;
+            grid-template-rows: 1fr !important;
+            gap: 10px !important;
+            min-height: 0 !important;
+            height: 100% !important;
+            overflow: hidden !important;
+            flex-grow: 0 !important;
+        }
+
+        #student-section .target-panel,
+        #student-section .contract-panel {
+            min-width: 0 !important;
+            min-height: 0 !important;
+            height: 100% !important;
+            border-radius: 16px !important;
+            background: #ffffff !important;
+            border: 1px solid #dbe3ef !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+        }
+
+        #student-section .target-panel {
+            padding: 10px !important;
+            display: grid !important;
+            grid-template-rows: 30px minmax(0, 1fr) !important;
+            gap: 8px !important;
+        }
+
+        #student-section .trade-step-label {
+            margin: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 8px !important;
+            color: #0f172a !important;
+            font-size: 1rem !important;
+            font-weight: 900 !important;
+            line-height: 1 !important;
+            white-space: nowrap !important;
+        }
+
+        #student-section .trade-step-label small {
+            color: #64748b !important;
+            font-size: 0.76rem !important;
+            font-weight: 700 !important;
+            white-space: nowrap !important;
+        }
+
+        #student-section .target-tile-grid {
+            display: grid !important;
+            grid-template-columns: repeat(4, minmax(115px, 1fr)) !important;
+            grid-auto-rows: minmax(52px, 1fr) !important;
+            gap: 8px !important;
+            max-height: none !important;
+            overflow: visible !important;
+            align-content: start !important;
+            padding: 0 !important;
+            flex-grow: 0 !important;
+        }
+
+        #student-section .target-tile {
+            min-height: 52px !important;
+            padding: 6px !important;
+            border-radius: 12px !important;
+            font-size: clamp(0.9rem, 1.12vw, 1.05rem) !important;
+            font-weight: 900 !important;
+            white-space: nowrap !important;
+        }
+
+        #student-section .contract-panel {
+            padding: 10px 8px !important;
+            display: grid !important;
+            grid-template-rows: 30px 58px 58px 22px !important;
+            gap: 8px !important;
+        }
+
+        #student-section .contract-title {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: #f8fafc !important;
+            color: #0f172a !important;
+            border-radius: 10px !important;
+            font-size: 0.86rem !important;
+            font-weight: 900 !important;
+            white-space: nowrap !important;
+        }
+
+        #student-section .trade-code-row {
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            display: block !important;
+            height: 58px !important;
+        }
+
+        #student-section .trade-code-row span { display: none !important; }
+
+        #student-section #target-pin-input {
+            width: 100% !important;
+            height: 58px !important;
+            margin: 0 !important;
+            padding: 0 6px !important;
+            box-sizing: border-box !important;
+            border: 2px solid #cbd5e1 !important;
+            border-radius: 12px !important;
+            text-align: center !important;
+            font-size: clamp(1rem, 1.3vw, 1.25rem) !important;
+            font-weight: 900 !important;
+        }
+
+        #student-section .contract-approve-btn {
+            width: 100% !important;
+            height: 58px !important;
+            margin: 0 !important;
+            padding: 0 6px !important;
+            border-radius: 12px !important;
+            background: var(--primary) !important;
+            font-size: clamp(0.9rem, 1.1vw, 1.05rem) !important;
+            font-weight: 900 !important;
+            white-space: nowrap !important;
+        }
+
+        #student-section .trade-contract-hint {
+            height: 22px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            color: #64748b !important;
+            font-size: clamp(0.58rem, 0.75vw, 0.72rem) !important;
+            font-weight: 700 !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
+        @media (max-width: 980px) {
+            #student-section .student-layout {
+                grid-template-rows: 44px 30px 218px minmax(0, 1fr) !important;
+            }
+            #student-section .stock-score-strip {
+                grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
+            }
+            #student-section .card-container {
+                grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+                grid-template-rows: repeat(2, minmax(0, 1fr)) !important;
+            }
+            #student-section .target-tile-grid {
+                grid-template-columns: repeat(4, minmax(105px, 1fr)) !important;
+            }
+        }
+
+    
+        /* ===== v8 운영 안정성: 교사 제어권, 접속 상태, 학생 관리 ===== */
+        .teacher-lock-badge { min-width: 150px; box-sizing: border-box; }
+        .teacher-lock-badge.controller { background: #064e3b; color: #86efac; border-color: #10b981; }
+        .teacher-lock-badge.readonly { background: #451a03; color: #fbbf24; border-color: #f59e0b; }
+        .teacher-lock-badge.locked { background: #3f1d1d; color: #fecaca; border-color: #ef4444; }
+        .teacher-takeover-btn {
+            display: none; padding: 8px 12px; border: none; border-radius: 999px;
+            background: #f59e0b; color: #111827; font-weight: 900; cursor: pointer; white-space: nowrap;
+        }
+        .teacher-takeover-btn.show { display: inline-flex; align-items: center; justify-content: center; }
+        .teacher-control-locked { opacity: 0.48 !important; cursor: not-allowed !important; filter: grayscale(0.25); }
+        .teacher-mini-btn.manage { background: #2563eb; }
+        .online-dot {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 0.72rem; height: 0.72rem; margin-left: 6px; border-radius: 999px;
+            background: #94a3b8; vertical-align: middle;
+        }
+        .online-dot.on { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15); }
+        .online-dot.off { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12); }
+
+    
+        /* ===== v9 학생 화면 안정화 보정 ===== */
+        #student-section .student-layout {
+            grid-template-rows: 52px 32px 206px minmax(0, 1fr) !important;
+        }
+
+        #student-section .student-top {
+            min-height: 52px !important;
+            height: 52px !important;
+            grid-template-columns: minmax(0, 1fr) auto auto !important;
+            gap: 8px !important;
+            padding: 6px 10px !important;
+        }
+
+        #student-section .student-top-mainline {
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        #student-section .student-asset-summary {
+            min-width: 0;
+            height: 34px;
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            background: #ecfeff;
+            border: 1px solid #a5f3fc;
+            color: #155e75;
+            font-size: 0.86rem;
+            font-weight: 900;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #student-section .student-asset-summary.ended {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        #student-section .student-mid {
+            height: 206px !important;
+            overflow: visible !important;
+            padding: 10px 10px 6px 10px !important;
+        }
+
+        #student-section #portfolio-card-box,
+        #student-section .card-container {
+            overflow: visible !important;
+        }
+
+        #student-section .card-container {
+            gap: 8px !important;
+        }
+
+        #student-section .card {
+            position: relative;
+            overflow: visible !important;
+        }
+
+        #student-section .card .emoji {
+            font-size: clamp(1.35rem, 1.8vw, 1.7rem) !important;
+        }
+
+        #student-section .card .name {
+            font-size: clamp(0.72rem, 0.95vw, 0.88rem) !important;
+        }
+
+        #student-section .card .score {
+            min-width: 42px !important;
+            height: 19px !important;
+            font-size: 0.66rem !important;
+        }
+
+        #student-section .student-bot.compact-student-trade {
+            position: relative;
+            z-index: 5;
+            grid-template-rows: 42px minmax(0, 1fr) !important;
+            overflow: visible !important;
+        }
+
+        #student-section .shout-action-strip {
+            position: relative;
+            z-index: 6;
+            grid-template-columns: 4fr 4fr 2fr !important;
+            gap: 8px !important;
+            overflow: visible !important;
+        }
+
+        #student-section .bot-left,
+        #student-section .trade-submit-cell,
+        #student-section .inline-code-box {
+            position: relative;
+            z-index: 7;
+            overflow: hidden !important;
+        }
+
+        #student-section #shout-display-area {
+            font-size: clamp(0.78rem, 1.0vw, 0.94rem) !important;
+        }
+
+        #student-section .trade-submit-cell {
+            background: transparent !important;
+        }
+
+        #student-section #trade-submit-btn,
+        #student-section #trade-cancel-btn {
+            height: 42px !important;
+            font-size: clamp(0.8rem, 0.98vw, 0.96rem) !important;
+        }
+
+        #student-section .inline-code-box strong {
+            font-size: 1.08rem !important;
+        }
+
+        #student-section .trade-contract-hint {
+            font-size: clamp(0.62rem, 0.78vw, 0.74rem) !important;
+        }
+
     </style>
 </head>
 <body>
+
+
+<div id="room-select-modal" class="result-overlay" style="display:none; z-index:13000;">
+    <div class="room-modal-panel">
+        <h2 class="room-modal-title" id="room-modal-title">🏫 수업 방 선택</h2>
+        <p class="room-modal-desc" id="room-modal-desc">교사와 학생이 같은 방 번호를 선택해야 같은 교실로 연결됩니다.</p>
+        <div id="room-modal-grid" class="room-modal-grid"></div>
+        <div class="network-note">
+            ✅ 이 화면에서는 아직 Firebase에 연결하지 않습니다.<br>
+            방을 선택하고 입장 버튼을 누른 뒤, 선택한 방의 게임 데이터만 연결합니다.
+        </div>
+        <div class="room-modal-actions">
+            <button class="btn" style="background:#64748b;" onclick="closeRoomSelectModal()">취소</button>
+            <button class="btn" style="background:var(--success);" onclick="confirmRoomSelect()">선택한 방으로 입장</button>
+        </div>
+    </div>
+</div>
 
 <div id="session-boot-overlay" class="preboot-overlay" style="display: none;">
     <div class="preboot-box">
         <div style="font-size:3rem; margin-bottom:10px;">📱</div>
         <h2 style="margin:0 0 8px 0; color:#38bdf8;">투자자 패드 복구 중...</h2>
-        <p style="margin:0; color:#cbd5e1; line-height:1.6;">새로고침한 계좌로 바로 연결하고 있습니다.</p>
+        <p id="session-boot-message" style="margin:0; color:#cbd5e1; line-height:1.6;">새로고침한 계좌로 바로 연결하고 있습니다.</p>
+        <div id="session-boot-actions" style="display:none; flex-direction:column; gap:10px; margin-top:18px;">
+            <button class="btn" style="background:var(--success);" onclick="retrySavedStudentRecovery()">🔁 다시 연결 시도</button>
+            <button class="btn" style="background:#64748b;" onclick="cancelSavedStudentRecovery(false)">🏠 복구 취소하고 홈으로</button>
+            <button class="btn" style="background:#f59e0b;" onclick="cancelSavedStudentRecovery(true)">🏫 방 다시 선택</button>
+        </div>
     </div>
 </div>
 
@@ -326,32 +1031,23 @@
     <h1 style="font-size: 2.8rem; margin: 0;">🐂📈 광기의 PIT 거래소</h1>
     <p style="color: var(--accent); font-size: 1.2rem; font-weight: bold; margin: 5px 0 0 0;">— 외쳐라, 바꿔라, 종을 울려라! —</p>
     <div class="gate-split">
-        <div class="gate-card" onclick="showMode('teacher')">
+        <div class="gate-card" onclick="openRoomSelectModal('teacher')">
             <h2>👨‍🏫 교사 시스템</h2>
             <p>교탁 대형 TV 전광판 활성화<br>인원 설정 및 거래 제어 타워 가동</p>
         </div>
-        <div class="gate-card" onclick="enterStudentGate()">
+        <div class="gate-card" onclick="openRoomSelectModal('student')">
             <h2>📱 학생 터미널</h2>
             <p>개인용 스마트 트레이딩 패널<br>실시간 외침 및 원격 계약 체결</p>
         </div>
     </div>
 
-    <div class="gate-teacher-controls">
-        <div class="room-picker">
-            <label for="main-room-code">🏫 수업 방 코드</label>
-            <select id="main-room-code" onchange="changeRoomCode(this.value)">
-                <option value="1111">1111번 방</option>
-                <option value="2222">2222번 방</option>
-                <option value="3333">3333번 방</option>
-                <option value="4444">4444번 방</option>
-                <option value="5555">5555번 방</option>
-                <option value="6666">6666번 방</option>
-                <option value="7777">7777번 방</option>
-                <option value="8888">8888번 방</option>
-                <option value="9999">9999번 방</option>
-                <option value="0000">0000번 방</option>
-            </select>
-            <small>교사와 학생이 같은 방을 고르면 한 교실로 연결됩니다.</small>
+    <div class="gate-teacher-controls" style="max-width: 720px; text-align: center;">
+        <select id="main-room-code" onchange="changeRoomCode(this.value)" style="display:none;">
+            <option value="1111">1111번 방</option>
+        </select>
+        <div style="color:#cbd5e1; line-height:1.7; font-size:0.95rem;">
+            교사 시스템 또는 학생 터미널을 누르면 <b style="color:#ff9f43;">방 선택 팝업</b>이 열립니다.<br>
+            첫 화면에서는 Firebase에 연결하지 않습니다.
         </div>
         <button class="btn-rule" onclick="openRuleGuideModal()">📖 게임 방법</button>
     </div>
@@ -361,7 +1057,12 @@
 <div id="teacher-section" class="view-frame" style="display: none; background: #0f172a;">
     <div style="display: flex; justify-content: space-between; align-items: center; min-height: 60px; margin-bottom: 10px; gap: 12px; flex-wrap: wrap;">
         <h1 style="color: #38bdf8; margin: 0; font-size: 1.8rem;">🏛️ 광기의 PIT 거래소 Control Dashboard</h1>
-        <div class="room-badge">🏫 <span id="teacher-room-code">1111</span>번 방</div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <button class="home-btn" onclick="goHome(false)">🏠 홈</button>
+            <div class="room-badge">🏫 <span id="teacher-room-code">1111</span>번 방</div>
+        <div class="room-badge teacher-lock-badge readonly" id="teacher-lock-badge">🔐 제어권 확인 중</div>
+        <button class="teacher-takeover-btn" id="teacher-takeover-btn" onclick="takeOverTeacherLock()">제어권 이어받기</button>
+        </div>
     </div>
 
     <div class="teacher-grid">
@@ -443,21 +1144,40 @@
             선생님께서 교탁에서 오늘의 참여 인원을 설정하고 시장을 개장하실 때까지 잠시만 기다려 주세요.<br>
             개장되는 순간 자동으로 투자자 선택 창이 열립니다!
         </p>
-        <button class="btn" style="background-color:#475569; margin-top:30px;" onclick="location.reload()">🚪 첫 화면으로 이탈</button>
+        <p style="color: #fbbf24; font-size: 0.95rem; margin-top: 20px; text-align: center; line-height: 1.7; max-width: 640px; background: rgba(251,191,36,0.08); border: 1px dashed rgba(251,191,36,0.4); border-radius: 12px; padding: 14px 18px;">
+            ⚠️ <b>1분 이상 기다려도 안 열리면</b> 위 방 번호가 선생님께서 알려주신 방 번호와 같은지 확인해 주세요.<br>
+            방 번호가 다르면 아래 버튼으로 첫 화면에 돌아가 올바른 방을 선택하세요.
+        </p>
+        <button class="btn" style="background-color:#475569; margin-top:24px;" onclick="goHome(true)">🚪 첫 화면으로 이탈 (방 다시 선택)</button>
     </div>
 
     <div id="student-gate-login" class="gate-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: 400; background: white; color: #334155; padding: 40px 20px; justify-content: start; display: none;">
         <h2 style="font-weight: 900; margin-bottom: 20px; font-size: 2rem; color: #0f172a; text-align:center;">📱 투자자 계좌를 터치하여 연동하세요</h2>
         <div class="room-badge light" style="margin-bottom: 14px;">🏫 <span id="student-login-room-code">1111</span>번 방</div>
         <div id="team-quick-grid" class="team-quick-grid"></div>
-        <button class="btn" style="background-color: #64748b; margin-top: 20px; width: 250px;" onclick="location.reload()">🚪 메인 게이트 복귀</button>
+        <button class="btn" style="background-color: #64748b; margin-top: 20px; width: 250px;" onclick="goHome(true)">🚪 메인 게이트 복귀</button>
     </div>
 
     <div class="student-layout" id="game-section">
         <div class="student-top">
-            <h3 id="team-display" style="margin: 0; font-size: 1.3rem;">🏢 투자자 계좌 연결 대기 중</h3>
+            <div class="student-top-mainline">
+                <h3 id="team-display" style="margin: 0; font-size: 1.1rem;">🏢 투자자 계좌 연결 대기 중</h3>
+                <button class="home-btn student" onclick="goHome(true)">🏠 홈/방 다시 선택</button>
+            </div>
+            <div id="student-asset-summary" class="student-asset-summary">💰 누적 총 자산 0 / 🎯 목표 자산 300</div>
             <button id="student-ready-btn" class="btn" style="background-color: var(--accent); padding: 10px 25px; display:none;" onclick="clickStudentReady()">👍 거래 준비 완료!</button>
             <div id="student-ready-status" style="font-weight:bold; color:var(--success); font-size:1.1rem; display:none;">✅ 거래 대기실 진입 성공!</div>
+        </div>
+
+        <div class="stock-score-strip" id="student-score-strip" aria-label="종목별 점수표">
+            <div class="stock-score-chip">🚀 우주 <b>100</b></div>
+            <div class="stock-score-chip">🔋 전지 <b>95</b></div>
+            <div class="stock-score-chip">🤖 로봇 <b>90</b></div>
+            <div class="stock-score-chip">🚗 자율 <b>80</b></div>
+            <div class="stock-score-chip">💊 바이오 <b>70</b></div>
+            <div class="stock-score-chip">📱 IT <b>65</b></div>
+            <div class="stock-score-chip">🎬 콘텐츠 <b>55</b></div>
+            <div class="stock-score-chip">🍔 푸드 <b>50</b></div>
         </div>
 
         <div class="student-mid">
@@ -467,23 +1187,35 @@
             </div>
         </div>
 
-        <div class="student-bot">
-            <div class="bot-left" id="shout-parent">
-                <div id="shout-display-area" style="font-size: 1.4rem; font-weight: bold; color: var(--danger);">지갑에서 교환할 단일 종목 카드를 선택 후 장터에 등록하세요.</div>
-            </div>
-            <div class="bot-right">
-                <div style="display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
-                    <button class="btn" id="trade-submit-btn" style="flex:1; min-width: 180px; background-color: var(--success);" onclick="postTrade()">선택 카드로 외침 장터 등록</button>
-                    <button class="btn" id="trade-cancel-btn" style="background-color:#64748b; display:none; flex:1; min-width: 140px;" onclick="cancelTrade()">외침 취소</button>
+        <div class="student-bot compact-student-trade">
+            <div class="shout-action-strip">
+                <div class="bot-left" id="shout-parent">
+                    <div id="shout-display-area">지갑에서 교환할 단일 종목 카드를 선택 후 장터에 등록하세요.</div>
                 </div>
-                <div id="action-zone" style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; opacity: 0.5; pointer-events: none;">
-                    <div class="trade-step-label">1. 거래할 상대를 먼저 선택하세요</div>
-                    <div class="target-tile-grid" id="target-team-tiles"></div>
-                    <div class="trade-code-row">
-                        <span>2. 상대 코드 2자리 입력</span>
-                        <input type="number" id="target-pin-input" placeholder="상대 코드 2자리" pattern="[0-9]*" inputmode="numeric" style="padding:9px 10px; width:190px; font-size:1.18rem; font-weight:900; text-align:center; border:2px solid #cbd5e1; border-radius:8px; margin:0;">
+                <div class="trade-submit-cell">
+                    <button class="btn" id="trade-submit-btn" onclick="postTrade()">선택 카드 장터 등록</button>
+                    <button class="btn" id="trade-cancel-btn" style="display:none;" onclick="cancelTrade()">외침 취소</button>
+                </div>
+                <div class="inline-code-box" id="inline-code-box">
+                    <span>내 코드</span>
+                    <strong id="inline-code-value">--</strong>
+                </div>
+            </div>
+
+            <div id="action-zone" class="trade-main-area" style="opacity: 0.5; pointer-events: none;">
+                <div class="target-panel">
+                    <div class="trade-step-label">
+                        <span>1. 거래할 상대를 먼저 선택하세요</span>
+                        <small>8명 방에서는 내 계좌 제외 7명 표시</small>
                     </div>
-                    <button class="btn" style="background-color:var(--success); padding: 8px; font-size:1rem; margin-top: 5px;" onclick="executeTrade()">원격 주식 계약 체결 승인</button>
+                    <div class="target-tile-grid" id="target-team-tiles"></div>
+                </div>
+
+                <div class="contract-panel">
+                    <div class="contract-title">2. 코드 입력</div>
+                    <input type="number" id="target-pin-input" placeholder="상대 코드" pattern="[0-9]*" inputmode="numeric">
+                    <button class="btn contract-approve-btn" onclick="executeTrade()">계약 승인</button>
+                    <div class="trade-contract-hint">상대도 내 코드를 입력해야 체결</div>
                 </div>
             </div>
         </div>
@@ -512,7 +1244,41 @@
         projectId: "class-stock-pit",
         appId: "1:254361694558:web:6bd94d08d7f21c4f1c9fcf"
     };
-    firebase.initializeApp(firebaseConfig); const database = firebase.database();
+    let firebaseReadyPromise = null;
+    let database = null;
+
+    function loadScriptOnce(src, id) {
+        return new Promise((resolve, reject) => {
+            if (document.getElementById(id)) { resolve(); return; }
+            const script = document.createElement('script');
+            script.id = id;
+            script.src = src;
+            script.async = false;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`스크립트 로드 실패: ${src}`));
+            document.head.appendChild(script);
+        });
+    }
+
+    async function ensureFirebaseReady() {
+        if (database) return database;
+        if (!firebaseReadyPromise) {
+            firebaseReadyPromise = (async () => {
+                await loadScriptOnce('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js', 'firebase-app-compat-sdk');
+                await loadScriptOnce('https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js', 'firebase-database-compat-sdk');
+                if (!window.firebase.apps || !window.firebase.apps.length) {
+                    window.firebase.initializeApp(firebaseConfig);
+                }
+                database = window.firebase.database();
+                return database;
+            })().catch((err) => {
+                firebaseReadyPromise = null;
+                alert('실시간 연결을 시작하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 입장해 주세요.');
+                throw err;
+            });
+        }
+        return firebaseReadyPromise;
+    }
     const ROOM_CODES = ['1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '0000'];
     const DEFAULT_ROOM_CODE = ROOM_CODES[0];
 
@@ -553,6 +1319,18 @@
     let lastTargetTileClickTs = 0;
     let gameConfigListenerRef = null;
     let playersListenerRef = null;
+    let savedSessionRecoveryTimer = null;
+    let savedSessionRecoveryRunning = false;
+
+    const HEARTBEAT_INTERVAL_MS = 20000;
+    const TEACHER_LOCK_STALE_MS = 10 * 60 * 1000;
+    const STUDENT_STALE_MS = 2 * 60 * 1000;
+    let teacherLockState = null;
+    let teacherLockListenerRef = null;
+    let teacherHeartbeatTimer = null;
+    let teacherIsController = false;
+    let studentHeartbeatTimer = null;
+    let studentPresenceRef = null;
 
     function normalizeRoomCode(code) {
         const roomCode = String(code || '').trim();
@@ -614,6 +1392,360 @@
         });
     }
 
+
+    function makeToken(prefix = 'token') {
+        try {
+            const bytes = new Uint32Array(4);
+            crypto.getRandomValues(bytes);
+            return `${prefix}_${Date.now()}_${Array.from(bytes).map(v => v.toString(36)).join('')}`;
+        } catch(e) {
+            return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        }
+    }
+
+    function getTeacherToken() {
+        let token = localStorage.getItem('pit_teacher_token');
+        if (!token) {
+            token = makeToken('teacher');
+            localStorage.setItem('pit_teacher_token', token);
+        }
+        return token;
+    }
+
+    function getStudentDeviceToken() {
+        let token = localStorage.getItem('pit_student_device_token');
+        if (!token) {
+            token = makeToken('student');
+            localStorage.setItem('pit_student_device_token', token);
+        }
+        return token;
+    }
+
+    function isTeacherLockStale(lock) {
+        if (!lock || !lock.teacher_token) return true;
+        const last = Number(lock.heartbeat_at || lock.locked_at || 0);
+        if (!last) return true;
+        return (Date.now() - last) > TEACHER_LOCK_STALE_MS;
+    }
+
+    function isStudentOnline(player) {
+        if (!player || player.online !== true) return false;
+        const last = Number(player.heartbeat_at || player.last_seen_at || 0);
+        if (!last) return true;
+        return (Date.now() - last) <= STUDENT_STALE_MS;
+    }
+
+    function guardTeacherControl(actionName = '이 작업') {
+        if (currentMode !== 'teacher') return true;
+        if (teacherIsController) return true;
+        const badge = document.getElementById('teacher-lock-badge');
+        const lockMsg = badge ? badge.innerText : '다른 교사가 제어 중입니다.';
+        alert(`${actionName}은 이 방의 제어권을 가진 교사만 실행할 수 있습니다.\n\n현재 상태: ${lockMsg}`);
+        return false;
+    }
+
+    function updateTeacherLockBadge() {
+        const badge = document.getElementById('teacher-lock-badge');
+        const takeoverBtn = document.getElementById('teacher-takeover-btn');
+        if (!badge) return;
+
+        badge.classList.remove('controller', 'readonly', 'locked');
+        if (currentMode !== 'teacher') {
+            badge.innerText = '🔐 제어권 확인 중';
+            badge.classList.add('readonly');
+            if (takeoverBtn) takeoverBtn.classList.remove('show');
+            return;
+        }
+
+        const stale = isTeacherLockStale(teacherLockState);
+        if (teacherIsController) {
+            badge.innerText = '🟢 제어권 보유';
+            badge.classList.add('controller');
+            if (takeoverBtn) takeoverBtn.classList.remove('show');
+        } else if (stale) {
+            badge.innerText = '🟠 교사 연결 끊김';
+            badge.classList.add('readonly');
+            if (takeoverBtn) takeoverBtn.classList.add('show');
+        } else {
+            badge.innerText = '🔒 다른 교사 제어 중';
+            badge.classList.add('locked');
+            if (takeoverBtn) takeoverBtn.classList.remove('show');
+        }
+    }
+
+    function applyTeacherControlLockToButtons() {
+        if (currentMode !== 'teacher') return;
+        updateTeacherLockBadge();
+        const ids = ['teacher-setup-btn', 'teacher-next-btn', 'teacher-force-end-btn', 'main-total-teams', 'main-end-score'];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (!teacherIsController) {
+                el.disabled = true;
+                el.classList.add('teacher-control-locked');
+                el.title = '다른 교사가 이 방을 제어 중입니다. 현재 화면은 읽기 전용입니다.';
+            } else {
+                el.classList.remove('teacher-control-locked');
+                if (el.title === '다른 교사가 이 방을 제어 중입니다. 현재 화면은 읽기 전용입니다.') el.title = '';
+            }
+        });
+    }
+
+    async function acquireTeacherControl(force = false) {
+        await ensureFirebaseReady();
+        const token = getTeacherToken();
+        const lockRef = roomRef('teacher_lock');
+        await lockRef.transaction((lock) => {
+            const stale = isTeacherLockStale(lock);
+            if (!lock || !lock.teacher_token || lock.teacher_token === token || stale || force) {
+                return {
+                    teacher_token: token,
+                    teacher_id: token,
+                    teacher_name: '교사',
+                    online: true,
+                    locked_at: (lock && lock.locked_at && !force) ? lock.locked_at : Date.now(),
+                    heartbeat_at: Date.now(),
+                    force_taken_at: force ? Date.now() : ((lock && lock.force_taken_at) || null)
+                };
+            }
+            return lock;
+        });
+
+        const snap = await lockRef.get();
+        teacherLockState = snap.val() || null;
+        teacherIsController = !!(teacherLockState && teacherLockState.teacher_token === token);
+        if (teacherIsController) startTeacherPresence();
+        else stopTeacherPresence(false);
+        updateTeacherLockBadge();
+        applyTeacherControlLockToButtons();
+        return teacherIsController;
+    }
+
+    function listenTeacherLock() {
+        if (teacherLockListenerRef) teacherLockListenerRef.off();
+        teacherLockListenerRef = roomRef('teacher_lock');
+        teacherLockListenerRef.on('value', (snap) => {
+            teacherLockState = snap.val() || null;
+            teacherIsController = !!(teacherLockState && teacherLockState.teacher_token === getTeacherToken());
+            if (!teacherIsController) stopTeacherPresence(false);
+            updateTeacherLockBadge();
+            applyTeacherControlLockToButtons();
+            if (currentMode === 'teacher') renderTeacherRankAndPit(latestPlayersData);
+        });
+    }
+
+    function stopTeacherLockListener() {
+        if (teacherLockListenerRef) {
+            teacherLockListenerRef.off();
+            teacherLockListenerRef = null;
+        }
+    }
+
+    function startTeacherPresence() {
+        if (teacherHeartbeatTimer) clearInterval(teacherHeartbeatTimer);
+        const token = getTeacherToken();
+        const lockRef = roomRef('teacher_lock');
+        lockRef.update({ teacher_token: token, online: true, heartbeat_at: Date.now() });
+        lockRef.onDisconnect().update({ online: false, disconnected_at: Date.now() });
+        teacherHeartbeatTimer = setInterval(() => {
+            lockRef.once('value').then((snap) => {
+                const lock = snap.val() || {};
+                if (lock.teacher_token !== token) {
+                    stopTeacherPresence(false);
+                    return;
+                }
+                return lockRef.update({ online: true, heartbeat_at: Date.now() });
+            });
+        }, HEARTBEAT_INTERVAL_MS);
+    }
+
+    function stopTeacherPresence(markOffline = true) {
+        if (teacherHeartbeatTimer) {
+            clearInterval(teacherHeartbeatTimer);
+            teacherHeartbeatTimer = null;
+        }
+        if (markOffline && database && currentMode === 'teacher') {
+            const token = getTeacherToken();
+            roomRef('teacher_lock').once('value').then((snap) => {
+                const lock = snap.val() || {};
+                if (lock.teacher_token === token) {
+                    return roomRef('teacher_lock').update({ online: false, disconnected_at: Date.now() });
+                }
+            }).catch(() => {});
+        }
+    }
+
+    window.takeOverTeacherLock = async function() {
+        const ok = confirm('기존 교사 연결이 끊긴 것으로 보입니다.\n이 방의 제어권을 이어받을까요?');
+        if (!ok) return;
+        const owned = await acquireTeacherControl(true);
+        if (owned) {
+            alert('제어권을 이어받았습니다.');
+            renderTeacherRankAndPit(latestPlayersData);
+        }
+    }
+
+    function startStudentPresence() {
+        if (!myName || !database) return;
+        if (studentHeartbeatTimer) clearInterval(studentHeartbeatTimer);
+        const token = getStudentDeviceToken();
+        studentPresenceRef = playersRef(myName);
+        studentPresenceRef.update({
+            online: true,
+            device_token: token,
+            heartbeat_at: Date.now(),
+            last_seen_at: Date.now()
+        });
+        studentPresenceRef.onDisconnect().update({
+            online: false,
+            last_seen_at: Date.now()
+        });
+        studentHeartbeatTimer = setInterval(() => {
+            if (!myName || !studentPresenceRef) return;
+            studentPresenceRef.update({
+                online: true,
+                device_token: token,
+                heartbeat_at: Date.now(),
+                last_seen_at: Date.now()
+            });
+        }, HEARTBEAT_INTERVAL_MS);
+    }
+
+    function stopStudentPresence(markOffline = true) {
+        if (studentHeartbeatTimer) {
+            clearInterval(studentHeartbeatTimer);
+            studentHeartbeatTimer = null;
+        }
+        if (markOffline && studentPresenceRef && myName) {
+            studentPresenceRef.update({ online: false, last_seen_at: Date.now() }).catch(() => {});
+        }
+        studentPresenceRef = null;
+    }
+
+    async function leaveCurrentStudentRoom() {
+        if (!database || !myName) return;
+        try {
+            await playersRef(myName).update({
+                joined: false,
+                ready: false,
+                online: false,
+                joined_session_id: "",
+                trade_count: 0,
+                pin_code: "",
+                offer_cards: null,
+                target_team: "",
+                typed_pin: "",
+                last_seen_at: Date.now()
+            });
+        } catch(e) {}
+    }
+
+    async function cleanupStaleRoomIfNeeded() {
+        if (currentMode !== 'teacher' || !teacherIsController) return;
+        try {
+            const snap = await roomRef().get();
+            const room = snap.val() || {};
+            const config = room.game_config || {};
+            const status = config.status || 'waiting';
+            if (status === 'waiting') return;
+
+            const lock = room.teacher_lock || {};
+            const players = room.players || {};
+            const hasOnlineStudent = Object.keys(players).some(k => isStudentOnline(players[k]));
+            const lastCandidates = [lock.heartbeat_at, lock.locked_at, config.updated_at].map(v => Number(v || 0)).filter(Boolean);
+            Object.keys(players).forEach(k => {
+                const p = players[k] || {};
+                const last = Number(p.heartbeat_at || p.last_seen_at || 0);
+                if (last) lastCandidates.push(last);
+            });
+            const last = lastCandidates.length ? Math.max(...lastCandidates) : 0;
+            const stale = last && (Date.now() - last > TEACHER_LOCK_STALE_MS);
+
+            if (stale && !hasOnlineStudent) {
+                await playersRef().remove();
+                await gameConfigRef().update({
+                    status: 'waiting',
+                    winner: "",
+                    corner_type: "",
+                    winning_stock: "",
+                    score_applied: false,
+                    big_hand_teams: [],
+                    entry_session_id: "",
+                    deal_id: "",
+                    updated_at: Date.now()
+                });
+                alert(`${currentRoomCode}번 방이 10분 이상 비활동 상태라 자동 정리되었습니다.`);
+            }
+        } catch(e) {
+            console.warn('비활동 방 정리 확인 실패:', e);
+        }
+    }
+
+    window.openStudentManageMenu = async function(teamName) {
+        if (!guardTeacherControl('학생 관리')) return;
+        const label = teamLabelByName(teamName);
+        const choice = prompt(
+            `[${label}] 관리 메뉴\n\n` +
+            `1: 준비 상태 초기화\n` +
+            `2: 거래 상태 초기화\n` +
+            `3: 재입장 허용\n` +
+            `4: 1분 거래 제한\n` +
+            `5: 학생 내보내기\n\n` +
+            `실행할 번호를 입력하세요.`
+        );
+        if (!choice) return;
+
+        const baseTradeReset = {
+            trade_count: 0,
+            pin_code: "",
+            offer_cards: null,
+            target_team: "",
+            typed_pin: ""
+        };
+
+        if (choice === '1') {
+            await playersRef(teamName).update({ ready: false });
+            return;
+        }
+        if (choice === '2') {
+            await playersRef(teamName).update(baseTradeReset);
+            return;
+        }
+        if (choice === '3') {
+            await playersRef(teamName).update({
+                joined: false,
+                ready: false,
+                online: false,
+                joined_session_id: "",
+                device_token: "",
+                ...baseTradeReset
+            });
+            return;
+        }
+        if (choice === '4') {
+            await playersRef(teamName).update({
+                ban_until: Date.now() + 60000,
+                ready: false,
+                ...baseTradeReset
+            });
+            return;
+        }
+        if (choice === '5') {
+            const ok = confirm(`[${label}] 학생을 현재 방에서 내보낼까요?`);
+            if (!ok) return;
+            await playersRef(teamName).update({
+                joined: false,
+                ready: false,
+                online: false,
+                joined_session_id: "",
+                ...baseTradeReset
+            });
+            return;
+        }
+        alert('1~5번 중 하나를 입력해 주세요.');
+    }
+
+
     function detachRoomListeners() {
         if (gameConfigListenerRef) {
             gameConfigListenerRef.off();
@@ -623,6 +1755,7 @@
             playersListenerRef.off();
             playersListenerRef = null;
         }
+        stopTeacherLockListener();
     }
 
     function changeRoomCode(roomCode) {
@@ -647,6 +1780,294 @@
         initApp();
     }
 
+    /* ============ 방 상태 모니터링 시스템 ============ */
+    let roomStatusPollInterval = null;
+    let latestRoomStatuses = {};
+
+    function classifyRoomStatus(roomData) {
+        if (!roomData) return { kind: 'empty', label: '비어있음', emoji: '🟢', joinedCount: 0 };
+        const config = roomData.game_config || {};
+        const players = roomData.players || {};
+        const sessionId = config.entry_session_id || "";
+        let joinedCount = 0;
+        Object.keys(players).forEach(name => {
+            const p = players[name];
+            if (p && p.joined && (!sessionId || p.joined_session_id === sessionId)) joinedCount++;
+        });
+        const status = config.status || 'waiting';
+        if (status === 'playing') return { kind: 'playing', label: '게임 진행 중', emoji: '🔴', joinedCount };
+        if (status === 'ready_check') return { kind: 'ready', label: '학생 입장 중', emoji: '🟡', joinedCount };
+        if (status === 'ended') return { kind: 'ended', label: '라운드 마감', emoji: '🟠', joinedCount };
+        if (status === 'game_over') return { kind: 'game_over', label: '시상식 중', emoji: '🏆', joinedCount };
+        if (joinedCount > 0) return { kind: 'ready', label: '학생 입장 중', emoji: '🟡', joinedCount };
+        return { kind: 'empty', label: '비어있음', emoji: '🟢', joinedCount: 0 };
+    }
+
+    function isRoomBusy(statusInfo) {
+        return statusInfo && (statusInfo.kind === 'playing' || statusInfo.kind === 'ready' || statusInfo.kind === 'ended');
+    }
+
+    function refreshRoomStatusOptions() {
+        const select = document.getElementById('main-room-code');
+        if (!select) return;
+        const previousValue = select.value || currentRoomCode;
+        select.innerHTML = '';
+        ROOM_CODES.forEach(code => {
+            const info = latestRoomStatuses[code] || { emoji: '🟢', label: '비어있음', joinedCount: 0 };
+            const countText = info.joinedCount > 0 ? ` (${info.joinedCount}명)` : '';
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = `${code}번 방  ${info.emoji} ${info.label}${countText}`;
+            select.appendChild(opt);
+        });
+        select.value = previousValue;
+    }
+
+    function loadAllRoomStatuses() {
+        return database.ref('rooms').once('value').then((snap) => {
+            const rooms = snap.val() || {};
+            const result = {};
+            ROOM_CODES.forEach(code => {
+                result[code] = classifyRoomStatus(rooms[code]);
+            });
+            latestRoomStatuses = result;
+            refreshRoomStatusOptions();
+            return result;
+        }).catch((err) => {
+            console.warn('방 상태 조회 실패:', err);
+            return {};
+        });
+    }
+
+    function startRoomStatusPolling() {
+        loadAllRoomStatuses();
+        if (roomStatusPollInterval) return;
+        roomStatusPollInterval = setInterval(loadAllRoomStatuses, 5000);
+    }
+
+    function stopRoomStatusPolling() {
+        if (roomStatusPollInterval) {
+            clearInterval(roomStatusPollInterval);
+            roomStatusPollInterval = null;
+        }
+    }
+
+    function getCurrentRoomStatus() {
+        return latestRoomStatuses[currentRoomCode] || null;
+    }
+    /* ============ /방 상태 모니터링 ============ */
+
+
+    /* ============ 새로고침 학생 세션 복구 ============ */
+    function hasSavedStudentSession() {
+        try {
+            return !!(localStorage.getItem('pit_logged_team') && localStorage.getItem('pit_entry_session_id'));
+        } catch(e) {
+            return false;
+        }
+    }
+
+    function clearSavedSessionRecoveryTimer() {
+        if (savedSessionRecoveryTimer) {
+            clearTimeout(savedSessionRecoveryTimer);
+            savedSessionRecoveryTimer = null;
+        }
+    }
+
+    function setSessionBootMessage(message, showActions = false) {
+        const msg = document.getElementById('session-boot-message');
+        if (msg) msg.innerText = message;
+        const actions = document.getElementById('session-boot-actions');
+        if (actions) actions.style.display = showActions ? 'flex' : 'none';
+    }
+
+    function showSessionBootOverlay() {
+        document.documentElement.classList.add('has-saved-student-session');
+        document.documentElement.classList.remove('student-session-ready');
+        const boot = document.getElementById('session-boot-overlay');
+        if (boot) boot.style.display = 'flex';
+        setSessionBootMessage('새로고침한 계좌로 바로 연결하고 있습니다.', false);
+    }
+
+    function showSavedSessionRecoveryActions(message) {
+        savedSessionRecoveryRunning = false;
+        clearSavedSessionRecoveryTimer();
+        document.documentElement.classList.add('has-saved-student-session');
+        document.documentElement.classList.remove('student-session-ready');
+        const boot = document.getElementById('session-boot-overlay');
+        if (boot) boot.style.display = 'flex';
+        setSessionBootMessage(message || '저장된 계좌를 확인하지 못했습니다. 홈으로 돌아가 다시 방을 선택할 수 있습니다.', true);
+    }
+
+    async function recoverSavedStudentSessionOnLoad() {
+        if (!hasSavedStudentSession() || savedSessionRecoveryRunning) return;
+        savedSessionRecoveryRunning = true;
+        currentMode = 'student';
+        currentRoomCode = normalizeRoomCode(getSavedRoomCode());
+        updateRoomLabels();
+        showSessionBootOverlay();
+
+        clearSavedSessionRecoveryTimer();
+        savedSessionRecoveryTimer = setTimeout(() => {
+            if (!document.documentElement.classList.contains('student-session-ready')) {
+                showSavedSessionRecoveryActions('연결이 오래 걸리고 있습니다. 네트워크가 느리거나 이전 세션이 끝났을 수 있습니다. 다시 연결하거나 홈에서 방을 다시 선택해 주세요.');
+            }
+        }, 6500);
+
+        try {
+            await initApp();
+        } catch (err) {
+            console.error(err);
+            showSavedSessionRecoveryActions('실시간 연결을 시작하지 못했습니다. 다시 연결하거나 홈으로 돌아가 방을 다시 선택해 주세요.');
+        }
+    }
+
+    async function retrySavedStudentRecovery() {
+        if (!hasSavedStudentSession()) {
+            cancelSavedStudentRecovery(false);
+            return;
+        }
+        try {
+            detachRoomListeners();
+            if (studentSelfListenerRef) { studentSelfListenerRef.off(); studentSelfListenerRef = null; }
+            detachTargetWatch();
+        } catch(e) {}
+        await recoverSavedStudentSessionOnLoad();
+    }
+
+    function cancelSavedStudentRecovery(openStudentRoomPicker = false) {
+        savedSessionRecoveryRunning = false;
+        clearSavedSessionRecoveryTimer();
+        try {
+            detachRoomListeners();
+            if (studentSelfListenerRef) { studentSelfListenerRef.off(); studentSelfListenerRef = null; }
+            detachTargetWatch();
+        } catch(e) {}
+        clearSavedStudentSession();
+        goHome(true, false);
+        if (openStudentRoomPicker) {
+            setTimeout(() => openRoomSelectModal('student'), 0);
+        }
+    }
+    /* ============ /새로고침 학생 세션 복구 ============ */
+
+    /* ============ 네트워크 없는 단순 방 선택 ============ */
+    let pendingEntryMode = null;
+    let pendingRoomCode = currentRoomCode;
+
+    function populateSimpleRoomOptions() {
+        const select = document.getElementById('main-room-code');
+        if (select) {
+            const selected = select.value || currentRoomCode;
+            select.innerHTML = '';
+            ROOM_CODES.forEach(code => {
+                const opt = document.createElement('option');
+                opt.value = code;
+                opt.textContent = `${code}번 방`;
+                select.appendChild(opt);
+            });
+            select.value = ROOM_CODES.includes(selected) ? selected : currentRoomCode;
+        }
+    }
+
+    function openRoomSelectModal(mode) {
+        pendingEntryMode = mode;
+        pendingRoomCode = currentRoomCode;
+        const title = document.getElementById('room-modal-title');
+        const desc = document.getElementById('room-modal-desc');
+        const modal = document.getElementById('room-select-modal');
+        if (title) title.innerText = mode === 'teacher' ? '👨‍🏫 교사 방 선택' : '📱 학생 방 선택';
+        if (desc) desc.innerText = mode === 'teacher'
+            ? '교탁 전광판으로 사용할 방 번호를 선택하세요.'
+            : '선생님이 알려준 방 번호를 선택하세요. 잘못 선택해도 홈/방 다시 선택으로 나올 수 있습니다.';
+        renderRoomModalChoices();
+        if (modal) modal.style.display = 'flex';
+    }
+
+    function renderRoomModalChoices() {
+        const grid = document.getElementById('room-modal-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        ROOM_CODES.forEach(code => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'room-modal-choice' + (code === pendingRoomCode ? ' active' : '');
+            btn.innerText = `${code}번 방`;
+            btn.onclick = () => {
+                pendingRoomCode = code;
+                renderRoomModalChoices();
+            };
+            grid.appendChild(btn);
+        });
+    }
+
+    function closeRoomSelectModal() {
+        const modal = document.getElementById('room-select-modal');
+        if (modal) modal.style.display = 'none';
+        pendingEntryMode = null;
+    }
+
+    async function confirmRoomSelect() {
+        const mode = pendingEntryMode;
+        currentRoomCode = normalizeRoomCode(pendingRoomCode);
+        saveCurrentRoomCode();
+        clearSavedStudentSession();
+        updateRoomLabels();
+        closeRoomSelectModal();
+        try {
+            if (mode === 'teacher') await showMode('teacher');
+            else await enterStudentGate();
+        } catch (err) {
+            console.error(err);
+            goHome(true, false);
+        }
+    }
+
+    function goHome(clearStudent = true, ask = true) {
+        if (ask && currentMode === 'student' && myName) {
+            const ok = confirm('현재 방에서 나와 첫 화면으로 돌아갈까요?\n잘못 들어온 방이면 다시 선택할 수 있습니다.');
+            if (!ok) return;
+        }
+        try {
+            if (currentMode === 'student' && myName && clearStudent) {
+                leaveCurrentStudentRoom();
+            }
+            stopStudentPresence(currentMode === 'student');
+            stopTeacherPresence(currentMode === 'teacher');
+            detachRoomListeners();
+            if (studentSelfListenerRef) { studentSelfListenerRef.off(); studentSelfListenerRef = null; }
+            detachTargetWatch();
+            stopRoomStatusPolling();
+        } catch(e) {}
+        if (clearStudent) clearSavedStudentSession();
+        currentMode = '';
+        myName = '';
+        myCards = [];
+        selectedIndices = [];
+        selectedTargetTeam = '';
+        latestPlayersData = {};
+        document.getElementById('teacher-section').style.display = 'none';
+        document.getElementById('student-section').style.display = 'none';
+        document.getElementById('student-gate-waiting').style.display = 'none';
+        document.getElementById('student-gate-login').style.display = 'none';
+        document.getElementById('game-over-overlay').style.display = 'none';
+        document.getElementById('result-modal-overlay').style.display = 'none';
+        document.getElementById('gate-section').style.display = 'flex';
+        populateSimpleRoomOptions();
+        updateRoomLabels();
+    }
+
+    /* 기존 방 상태 감시 함수는 네트워크 접근을 막기 위해 단순 선택 함수로 덮어씁니다. */
+    function refreshRoomStatusOptions() { populateSimpleRoomOptions(); }
+    function loadAllRoomStatuses() { populateSimpleRoomOptions(); return Promise.resolve({}); }
+    function startRoomStatusPolling() { populateSimpleRoomOptions(); }
+    function stopRoomStatusPolling() {
+        if (roomStatusPollInterval) { clearInterval(roomStatusPollInterval); roomStatusPollInterval = null; }
+    }
+    function getCurrentRoomStatus() { return { kind: 'manual', label: '수동 선택', emoji: '🏫', joinedCount: 0 }; }
+    function isRoomBusy() { return false; }
+    /* ============ /네트워크 없는 단순 방 선택 ============ */
+
     function openRuleGuideModal() { document.getElementById('rule-guide-modal').style.display = 'flex'; }
     function closeRuleGuideModal() { document.getElementById('rule-guide-modal').style.display = 'none'; }
 
@@ -666,6 +2087,8 @@
     }
 
     function clearSavedStudentSession() {
+        clearSavedSessionRecoveryTimer();
+        savedSessionRecoveryRunning = false;
         localStorage.removeItem('pit_logged_team');
         localStorage.removeItem('pit_entry_session_id');
         document.documentElement.classList.remove('has-saved-student-session');
@@ -675,6 +2098,8 @@
     }
 
     function showStudentChoiceFromStaleSession(config) {
+        clearSavedSessionRecoveryTimer();
+        savedSessionRecoveryRunning = false;
         clearSavedStudentSession();
         if (studentSelfListenerRef) {
             studentSelfListenerRef.off();
@@ -691,7 +2116,8 @@
         handleStudentStatusChange(config);
     }
 
-    function initApp() {
+    async function initApp() {
+        await ensureFirebaseReady();
         detachRoomListeners();
         try {
             const savedName = localStorage.getItem('pit_logged_team');
@@ -729,6 +2155,8 @@
                     autoSessionLogin(savedName);
                 } else if (shouldChooseAccountNow) {
                     showStudentChoiceFromStaleSession(config);
+                } else if (savedSessionRecoveryRunning) {
+                    showSavedSessionRecoveryActions('이전 계좌 정보가 현재 방의 세션과 맞지 않습니다. 홈으로 돌아가 방과 투자자 계좌를 다시 선택해 주세요.');
                 }
             }
 
@@ -846,6 +2274,7 @@
     }
 
     function toggleBigHandTeam(teamId) {
+        if (!guardTeacherControl('큰 손 지정')) return;
         if (!canEditBigHands()) {
             alert('모든 투자자가 준비 완료한 뒤 큰 손을 지정할 수 있습니다.');
             return;
@@ -886,11 +2315,16 @@
     }
 
     function canEditBigHands() {
-        return (globalStatus === 'ready_check' || globalStatus === 'ended') && getUnreadyTeams().length === 0;
+        return currentMode === 'teacher' && teacherIsController &&
+            (globalStatus === 'ready_check' || globalStatus === 'ended') &&
+            getUnreadyTeams().length === 0;
     }
 
     function autoSessionLogin(savedName) {
+        clearSavedSessionRecoveryTimer();
+        savedSessionRecoveryRunning = false;
         myName = savedName; currentMode = 'student';
+        stopRoomStatusPolling();
         document.documentElement.classList.remove('has-saved-student-session');
         document.documentElement.classList.add('student-session-ready');
         document.getElementById('session-boot-overlay').style.display = 'none';
@@ -904,11 +2338,14 @@
         renderCardNotice('교사가 게임을 시작해야 카드를 받습니다', '시장 개장 후 내 카드가 자동으로 표시됩니다.');
         tradeWatchBootstrapped = false;
         lastSeenTradeTs = null;
+        startStudentPresence();
         initStudentSelfListener();
     }
 
-    function enterStudentGate() {
+    async function enterStudentGate() {
         currentMode = "student";
+        stopRoomStatusPolling();
+        await initApp();
         document.getElementById('gate-section').style.display = 'none';
         document.getElementById('teacher-section').style.display = 'none';
         document.getElementById('student-section').style.display = 'flex';
@@ -924,6 +2361,7 @@
     }
 
     function updateMaxTeamsOnFly() {
+        if (!guardTeacherControl('참여 인원 변경')) return;
         const el = document.getElementById('main-total-teams');
         if (globalStatus !== 'waiting') {
             alert('학생 입장을 연 뒤에는 참여 인원을 바꿀 수 없습니다.\n필요하면 초기 게이트에서 전체 초기화 후 다시 설정해 주세요.');
@@ -939,6 +2377,7 @@
     }
 
     function updateEndScoreOnFly() {
+        if (!guardTeacherControl('종료 점수 변경')) return;
         const el = document.getElementById('main-end-score');
         if (globalStatus !== 'waiting') {
             alert('학생 입장을 연 뒤에는 종료 점수를 바꾸지 않도록 잠갔습니다.\n수업을 바로 마치려면 강제 시상식 버튼을 사용해 주세요.');
@@ -951,7 +2390,7 @@
             playersRef().once('value').then((snap) => {
                 const players = snap.val() || {}; let trigger = false;
                 Object.keys(players).forEach(k => { if ((players[k].total_score || 0) >= val) trigger = true; });
-                if (trigger) gameConfigRef('status').set('game_over');
+                if (trigger) gameConfigRef().update({ status: 'game_over', updated_at: Date.now() });
             });
         } else {
             el.value = globalEndScore;
@@ -964,7 +2403,8 @@
             const teamInfo = MASTER_TEAMS[i-1]; if (!teamInfo) continue;
             const player = playersData[teamInfo.name];
             const isClaimed = player && player.joined && (!globalEntrySessionId || player.joined_session_id === globalEntrySessionId);
-            if (isClaimed) continue;
+            const isClaimedOnline = isClaimed && isStudentOnline(player);
+            if (isClaimedOnline) continue;
             const tile = document.createElement('div'); tile.className = 'team-tile';
             tile.style.background = TEAM_COLORS[(i-1) % TEAM_COLORS.length];
             tile.innerHTML = `<div style="font-size:1.2rem;">${teamLabel(teamInfo)}</div><div style="font-size:0.8rem; color:#64748b; margin-top:4px; font-weight:normal;">식별코드: ${teamInfo.pw}</div>`;
@@ -979,7 +2419,14 @@
         const inputCode = prompt(`[${teamLabel(teamInfo)}]의 고유 식별 코드 3자리를 입력하세요:`);
         if(teamInfo.pw !== inputCode) return alert('식별 코드가 일치하지 않습니다!');
         playersRef(teamInfo.name).update({
-            player_name: teamInfo.name, joined: true, joined_session_id: globalEntrySessionId || "", ready: false
+            player_name: teamInfo.name,
+            joined: true,
+            joined_session_id: globalEntrySessionId || "",
+            ready: false,
+            online: true,
+            device_token: getStudentDeviceToken(),
+            heartbeat_at: Date.now(),
+            last_seen_at: Date.now()
         });
         setSavedStudentSession(teamInfo.name);
         autoSessionLogin(teamInfo.name);
@@ -1020,12 +2467,17 @@
         element.classList.add('active'); selectedTargetTeam = teamName;
     }
 
-    function showMode(mode) {
+    async function showMode(mode) {
         currentMode = mode;
+        stopRoomStatusPolling();
+        await initApp();
         document.getElementById('gate-section').style.display = 'none';
         if(mode === 'teacher') {
             document.getElementById('teacher-section').style.display = 'flex';
             renderStaticTicker();
+            await acquireTeacherControl(false);
+            listenTeacherLock();
+            await cleanupStaleRoomIfNeeded();
             gameConfigRef().once('value').then((snap) => { handleTeacherStatusChange(snap.val() || {}); });
             playersRef().once('value').then((snap) => {
                 latestPlayersData = snap.val() || {};
@@ -1054,12 +2506,45 @@
         return deck;
     }
 
-    function applySetup() {
-        const activeGame = globalStatus === 'playing' || globalStatus === 'ended';
-        const confirmMsg = activeGame
-            ? "새 게임을 시작하면 현재 점수, 손패, 미완료 거래가 모두 초기화됩니다.\n\n정말 새 게임으로 다시 시작할까요?"
-            : "오늘의 참여 인원과 종료 점수를 확정하고 학생 입장을 열까요?\n\n학생들은 계좌 선택 후 준비 완료 버튼을 누릅니다.";
-        if (!confirm(confirmMsg)) return;
+    async function applySetup() {
+        if (!guardTeacherControl('학생 입장 열기')) return;
+        // 새 게임 시작 직전, 다른 반이 막 시작했을 수 있으니 한 번 더 실시간 확인
+        try {
+            const [configSnap, playersSnap] = await Promise.all([
+                gameConfigRef().once('value'),
+                playersRef().once('value')
+            ]);
+            const liveConfig = configSnap.val() || {};
+            const liveStatus = liveConfig.status || 'waiting';
+            const livePlayers = playersSnap.val() || {};
+            let liveJoinedCount = 0;
+            Object.keys(livePlayers).forEach(k => { if (livePlayers[k] && livePlayers[k].joined) liveJoinedCount++; });
+
+            if (liveStatus === 'playing' || liveStatus === 'ready_check' || liveStatus === 'ended') {
+                const statusLabel = (liveStatus === 'playing') ? '게임 진행 중'
+                    : (liveStatus === 'ready_check') ? '학생 입장 / 준비 중'
+                    : '라운드 마감 (정산 중)';
+                const warnMsg = `⚠️ 경고: 현재 ${currentRoomCode}번 방은 [${statusLabel}] 상태입니다.\n` +
+                    `입장한 투자자: ${liveJoinedCount}명\n\n` +
+                    `지금 새 게임을 시작하면 이 방의 진행 중인 수업이 즉시 중단되고\n` +
+                    `모든 점수와 카드가 초기화됩니다.\n\n` +
+                    `만약 다른 반이 이 방을 쓰고 있다면 그 수업이 망가집니다.\n` +
+                    `다른 빈 방(🟢)으로 옮기는 것을 권장합니다.\n\n` +
+                    `정말 ${currentRoomCode}번 방에서 새 게임을 시작할까요?`;
+                if (!confirm(warnMsg)) return;
+            } else {
+                const baseMsg = `오늘의 참여 인원과 종료 점수를 확정하고 ${currentRoomCode}번 방의 학생 입장을 열까요?\n\n` +
+                    `학생들은 계좌 선택 후 준비 완료 버튼을 누릅니다.`;
+                if (!confirm(baseMsg)) return;
+            }
+        } catch(e) {
+            console.warn('방 상태 확인 실패, 기존 확인 메시지로 진행:', e);
+            const activeGame = globalStatus === 'playing' || globalStatus === 'ended';
+            const fallbackMsg = activeGame
+                ? "새 게임을 시작하면 현재 점수, 손패, 미완료 거래가 모두 초기화됩니다.\n\n정말 새 게임으로 다시 시작할까요?"
+                : "오늘의 참여 인원과 종료 점수를 확정하고 학생 입장을 열까요?\n\n학생들은 계좌 선택 후 준비 완료 버튼을 누릅니다.";
+            if (!confirm(fallbackMsg)) return;
+        }
 
         const maxTeams = parseInt(document.getElementById('main-total-teams').value);
         const endScore = parseInt(document.getElementById('main-end-score').value);
@@ -1073,19 +2558,22 @@
                 player_name: tName, joined: false, joined_session_id: "", cards: [], trade_count: 0, pin_code: "",
                 offer_cards: null, round_earn: 0, total_score: 0,
                 ready: false, ban_until: null, target_team: "", typed_pin: "",
-                last_trade: null, cards_deal_id: ""
+                last_trade: null, cards_deal_id: "",
+                online: false, device_token: "", heartbeat_at: 0, last_seen_at: 0
             };
         }
         playersRef().set(playersPayload).then(() => {
             return gameConfigRef().update({
                 max_teams: maxTeams, end_score: endScore, status: 'ready_check',
                 winner: "", corner_type: "", winning_stock: "",
-                score_applied: false, big_hand_teams: [], entry_session_id: entrySessionId, deal_id: ""
+                score_applied: false, big_hand_teams: [], entry_session_id: entrySessionId, deal_id: "",
+                updated_at: Date.now()
             });
         });
     }
 
     function nextRound() {
+        if (!guardTeacherControl('거래 시작')) return;
         if (globalStatus === 'ready_check' || globalStatus === 'ended') {
             if (getUnreadyTeams().length > 0) {
                 alert('아직 준비 완료하지 않은 투자자가 있습니다.');
@@ -1099,6 +2587,7 @@
     }
 
     function startPreparedRound() {
+        if (!guardTeacherControl('거래 시작')) return;
         const bigHandTeams = getChosenBigHandTeams(globalMaxTeams);
         if (!bigHandTeams) return;
         const dealId = Date.now().toString();
@@ -1111,7 +2600,8 @@
             '/game_config/winning_stock': '',
             '/game_config/score_applied': false,
             '/game_config/big_hand_teams': bigHandTeams,
-            '/game_config/deal_id': dealId
+            '/game_config/deal_id': dealId,
+            '/game_config/updated_at': Date.now()
         };
         for(let i = 1; i <= globalMaxTeams; i++) {
             const tName = MASTER_TEAMS[i-1].name;
@@ -1187,7 +2677,7 @@
     function setTradeAreaVisible(visible) {
         const tradeArea = document.querySelector('.student-bot');
         if (!tradeArea) return;
-        tradeArea.style.display = visible ? 'flex' : 'none';
+        tradeArea.style.display = visible ? 'grid' : 'none';
     }
 
     function renderCardNotice(title, body) {
@@ -1215,8 +2705,12 @@
         if(myCards.includes(BEAR)) { box.className = "bear-warning"; } else { box.className = ""; }
         const sortedCards = [...myCards].sort(); myCards = sortedCards;
         sortedCards.forEach((card, index) => {
-            const div = document.createElement('div'); div.className = `card ${selectedIndices.includes(index) ? 'selected' : ''}`;
-            div.innerHTML = `<div class="emoji">${card}</div><div class="name">${STOCK_NAMES[card]}</div>`;
+            const div = document.createElement('div');
+            const isSpecial = card === BULL;
+            const isDanger = card === BEAR;
+            const scoreText = STOCK_VALS[card] ? `${STOCK_VALS[card]}점` : (isSpecial ? '조커' : '주의');
+            div.className = `card ${selectedIndices.includes(index) ? 'selected' : ''} ${isSpecial ? 'special' : ''} ${isDanger ? 'danger' : ''}`;
+            div.innerHTML = `<div class="emoji">${card}</div><div class="name">${STOCK_NAMES[card]}</div><div class="score">${scoreText}</div>`;
             div.onclick = () => {
                 const now = Date.now();
                 if (now - lastCardClickTs < 250) return;
@@ -1270,19 +2764,10 @@
         });
 
         const shoutBox = document.getElementById('shout-display-area');
+        const codeValue = document.getElementById('inline-code-value');
         const krCount = ["영", "한 장!", "두 장!", "세 장!", "네 장!"][tradeCount];
-        shoutBox.innerHTML = `
-            <div class="shout-market-call">
-                <div class="shout-call-block">
-                    <div class="shout-code-label">📢 외침</div>
-                    <div class="shout-call-main">"${krCount} ${krCount}"<br>외치세요!</div>
-                </div>
-                <div class="shout-code-block">
-                    <div class="shout-code-label">🤝 내 코드</div>
-                    <div class="shout-code-value">${pinCode}</div>
-                </div>
-            </div>
-        `;
+        shoutBox.innerText = `📣 ${krCount} ${krCount} 외치세요 · 같은 장수를 외치는 투자자를 찾으세요`;
+        if (codeValue) codeValue.innerText = pinCode;
 
         document.getElementById('action-zone').style.opacity = "1";
         document.getElementById('action-zone').style.pointerEvents = "auto";
@@ -1382,6 +2867,8 @@
     function clearTradeUI() {
         selectedIndices = []; clearTargetUIOnly();
         document.getElementById('shout-display-area').innerText = '지갑에서 교환할 단일 종목 카드를 선택 후 장터에 등록하세요.';
+        const codeValue = document.getElementById('inline-code-value');
+        if (codeValue) codeValue.innerText = '--';
         document.getElementById('action-zone').style.opacity = "0.5";
         document.getElementById('action-zone').style.pointerEvents = "none";
         document.getElementById('trade-submit-btn').style.display = 'block';
@@ -1479,6 +2966,7 @@
             }
 
             updateStudentReadyUI(data);
+            updateStudentAssetSummary(data);
             watchCurrentTarget(data);
 
             const isCurrentDealCards = !globalDealId || data.cards_deal_id === globalDealId;
@@ -1529,10 +3017,25 @@
         }
     }
 
+    function updateStudentAssetSummary(data = {}) {
+        const box = document.getElementById('student-asset-summary');
+        if (!box) return;
+        const total = Number(data.total_score || 0);
+        const target = Number(globalEndScore || 300);
+        box.innerText = `💰 누적 총 자산 ${total} / 🎯 목표 자산 ${target}`;
+        if (globalStatus === 'ended' || globalStatus === 'game_over') {
+            box.classList.add('ended');
+        } else {
+            box.classList.remove('ended');
+        }
+    }
+
+
     function handleStudentStatusChange(config) {
         const status = config.status || 'waiting';
         globalStatus = status;
         const tradeBtn = document.getElementById('trade-submit-btn');
+        updateStudentAssetSummary(latestPlayersData[myName] || {});
 
         if (status === 'playing') {
             document.getElementById('student-gate-waiting').style.display = 'none';
@@ -1734,12 +3237,13 @@
             if (joinedThisSession && globalStatus === 'ready_check') statusBadge = p.ready ? '<span style="color:var(--success); margin-left:8px;">[준비완료]</span>' : '<span style="color:var(--danger); margin-left:8px;">[대기중]</span>';
             if (joinedThisSession && globalStatus === 'playing') statusBadge = '<span style="color:#38bdf8; margin-left:8px;">[거래중]</span>';
             if (joinedThisSession && globalStatus === 'ended') statusBadge = p.ready ? '<span style="color:var(--success); margin-left:8px;">[준비완료]</span>' : '<span style="color:var(--danger); margin-left:8px;">[대기중]</span>';
-            const kickBtn = `<button class="teacher-mini-btn" onclick="kickPlayerForce1Min('${p.player_name}')">🚫 1분퇴장</button>`;
+            const onlineDot = isStudentOnline(p) ? '<span class="online-dot on" title="접속 중"></span>' : '<span class="online-dot off" title="오프라인 또는 새로고침 중"></span>';
+            const manageBtn = `<button class="teacher-mini-btn manage" onclick="openStudentManageMenu('${p.player_name}')">관리</button>`;
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td style="font-weight:bold; color:#38bdf8; text-align:left; padding-left:15px;">🏢 ${playerLabel}${statusBadge}</td>
-                <td><div class="teacher-action-stack">${bigControl}${kickBtn}</div></td>
+                <td style="font-weight:bold; color:#38bdf8; text-align:left; padding-left:15px;">🏢 ${playerLabel}${statusBadge}${onlineDot}</td>
+                <td><div class="teacher-action-stack">${bigControl}${manageBtn}</div></td>
                 <td>${cards.length}장</td>
                 <td style="color:${currentRoundEarn >= 0 ? '#10b981':'#ef4444'}; font-weight:bold;">${currentRoundEarn >= 0 ? '+' : ''}${currentRoundEarn} 점</td>
                 <td style="color:#f59e0b; font-weight:bold; font-size:1.3rem;">${p.total_score || 0}점</td>
@@ -1752,6 +3256,7 @@
             if(roomCounts[i].length > 0) { roomEl.innerHTML = roomCounts[i].map(name => `<b style="color:#10b981;">${name}</b>`).join(', ') + " 외침 중!"; }
             else { roomEl.innerText = "-"; }
         }
+        applyTeacherControlLockToButtons();
     }
 
     function pickBigHandTeams(maxTeams) {
@@ -1761,6 +3266,7 @@
     }
 
     window.kickPlayerForce1Min = function(teamName) {
+        if (!guardTeacherControl('학생 1분퇴장')) return;
         if (confirm(`🏢 [${teamLabelByName(teamName)}]을 1분간 거래 제한(퇴장)하시겠습니까?`)) {
             playersRef(teamName).update({
                 ban_until: Date.now() + 60000, ready: false, trade_count: 0, pin_code: "", offer_cards: null, target_team: "", typed_pin: ""
@@ -1769,9 +3275,10 @@
     }
 
     window.manualGameOverForce = function() {
+        if (!guardTeacherControl('강제 시상식')) return;
         if(askForceEndConfirmation()) {
             currentMode = 'teacher';
-            gameConfigRef().update({ status: 'game_over' });
+            gameConfigRef().update({ status: 'game_over', updated_at: Date.now() });
         }
     }
 
@@ -1809,8 +3316,9 @@
     }
 
     function resetToHomeForce() {
+        if (!guardTeacherControl('전체 초기화')) return;
         if(confirm("모든 금융 데이터를 초기화하고 첫 마스터 화면으로 가시겠습니까?\n\n모든 학생의 카드와 점수가 삭제됩니다.")) {
-            gameConfigRef().set({ max_teams: 8, end_score: 300, status: 'waiting', winner: "", corner_type: "", winning_stock: "", score_applied: false, big_hand_teams: [], entry_session_id: "", deal_id: "" });
+            gameConfigRef().set({ max_teams: 8, end_score: 300, status: 'waiting', winner: "", corner_type: "", winning_stock: "", score_applied: false, big_hand_teams: [], entry_session_id: "", deal_id: "", updated_at: Date.now() });
             playersRef().remove().then(() => { clearSavedStudentSession(); location.reload(); });
         }
     }
@@ -1855,7 +3363,28 @@
         });
     }
 
-    window.addEventListener('DOMContentLoaded', initApp);
+    window.addEventListener('beforeunload', () => {
+        try {
+            if (currentMode === 'student' && myName && studentPresenceRef) {
+                studentPresenceRef.update({ online: false, last_seen_at: Date.now() });
+            }
+            if (currentMode === 'teacher' && teacherIsController) {
+                roomRef('teacher_lock').update({ online: false, disconnected_at: Date.now() });
+            }
+        } catch(e) {}
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+        populateSimpleRoomOptions();
+        updateRoomLabels();
+
+        // 첫 화면에서는 Firebase에 연결하지 않습니다.
+        // 단, 학생이 게임 중 새로고침한 경우에는 같은 방으로 복구해야 하므로
+        // 저장된 학생 세션이 있을 때만 Firebase 연결을 시작합니다.
+        if (hasSavedStudentSession()) {
+            recoverSavedStudentSessionOnLoad();
+        }
+    });
 </script>
 <div class="copyright-strip">© 2026 <strong>청완초등학교 교사 이우진 (Woojin Lee)</strong> · 광기의 PIT 거래소 · 무단 복제·재배포 금지 · Licensed under CC BY-NC 4.0</div>
 
