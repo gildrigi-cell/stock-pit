@@ -1585,16 +1585,19 @@
             }
         });
 
-        // 수업 종료 및 강제 시상식은 게임 중에도 현재 제어 교사가 항상 사용할 수 있어야 합니다.
+        // 수업 종료 및 강제 시상식은 교사 화면에서 항상 보이게 둡니다.
+        // 게임 중에도 현재 제어 교사는 사용할 수 있어야 합니다.
         const forceEndBtn = document.getElementById('teacher-force-end-btn');
         if (forceEndBtn) {
-            const canShowForceEnd = ['ready_check', 'playing', 'ended'].includes(globalStatus);
-            forceEndBtn.style.display = canShowForceEnd ? 'block' : 'none';
-            forceEndBtn.disabled = !teacherIsController || !canShowForceEnd;
-            forceEndBtn.classList.toggle('teacher-control-locked', !teacherIsController || !canShowForceEnd);
-            forceEndBtn.title = teacherIsController
+            const canUseForceEnd = teacherIsController && globalStatus !== 'game_over';
+            forceEndBtn.style.display = 'block';
+            forceEndBtn.disabled = !canUseForceEnd;
+            forceEndBtn.classList.toggle('teacher-control-locked', !canUseForceEnd);
+            forceEndBtn.title = canUseForceEnd
                 ? '현재 누적 자산 기준으로 수업을 종료하고 시상식으로 이동합니다.'
-                : '다른 교사가 이 방을 제어 중입니다. 현재 화면은 읽기 전용입니다.';
+                : (globalStatus === 'game_over'
+                    ? '이미 시상식 상태입니다.'
+                    : '다른 교사가 이 방을 제어 중입니다. 현재 화면은 읽기 전용입니다.');
         }
     }
 
@@ -3334,7 +3337,9 @@
         renderBigHandPicker();
         const forceEndBtn = document.getElementById('teacher-force-end-btn');
         if (forceEndBtn) {
-            forceEndBtn.style.display = (status === 'ready_check' || status === 'playing' || status === 'ended') ? 'block' : 'none';
+            forceEndBtn.style.display = 'block';
+            forceEndBtn.disabled = !teacherIsController || status === 'game_over';
+            forceEndBtn.classList.toggle('teacher-control-locked', !teacherIsController || status === 'game_over');
         }
         if (status === 'playing') {
             document.getElementById('winner-announcement').innerText = "🚀 현재 광기의 PIT 거래소 실시간 작동 중!";
@@ -3386,7 +3391,9 @@
         const setupBtn = document.getElementById('teacher-setup-btn'); const nextBtn = document.getElementById('teacher-next-btn');
         const forceEndBtn = document.getElementById('teacher-force-end-btn');
         if (forceEndBtn) {
-            forceEndBtn.style.display = (globalStatus === 'ready_check' || globalStatus === 'playing' || globalStatus === 'ended') ? 'block' : 'none';
+            forceEndBtn.style.display = 'block';
+            forceEndBtn.disabled = !teacherIsController || globalStatus === 'game_over';
+            forceEndBtn.classList.toggle('teacher-control-locked', !teacherIsController || globalStatus === 'game_over');
         }
 
         if (globalStatus === 'waiting') {
