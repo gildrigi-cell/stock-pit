@@ -1321,6 +1321,15 @@
             display: none !important;
         }
 
+    
+        .room-modal-choice.available .room-market-status {
+            color: #047857;
+        }
+        .room-modal-choice.in_use .room-market-status,
+        .room-modal-choice.playing .room-market-status {
+            color: #b45309;
+        }
+
     </style>
 </head>
 <body>
@@ -1818,6 +1827,63 @@
         return path ? base.child(path) : base;
     }
 
+    function getTeacherActiveRoomInfo() {
+        try {
+            return {
+                room: localStorage.getItem('pit_teacher_active_room') || '',
+                token: localStorage.getItem('pit_teacher_token') || '',
+                started_at: Number(localStorage.getItem('pit_teacher_room_started_at') || 0)
+            };
+        } catch(e) {
+            return { room: '', token: '', started_at: 0 };
+        }
+    }
+
+    function saveTeacherActiveRoom(code) {
+        try {
+            localStorage.setItem('pit_teacher_active_room', normalizeRoomCode(code));
+            localStorage.setItem('pit_teacher_room_started_at', String(Date.now()));
+        } catch(e) {}
+    }
+
+    function clearTeacherActiveRoom(code = '') {
+        try {
+            const info = getTeacherActiveRoomInfo();
+            if (!code || !info.room || info.room === normalizeRoomCode(code)) {
+                localStorage.removeItem('pit_teacher_active_room');
+                localStorage.removeItem('pit_teacher_room_started_at');
+            }
+        } catch(e) {}
+    }
+
+    function isSameTeacherCachedRoom(code, lock = null) {
+        const normalized = normalizeRoomCode(code);
+        const token = getTeacherToken();
+        const info = getTeacherActiveRoomInfo();
+        const sameLocalRoom = info.room === normalized && info.token === token;
+        const sameLock = lock && lock.teacher_token && lock.teacher_token === token;
+        const localNotExpired = info.started_at && (Date.now() - info.started_at < TEACHER_SESSION_LIMIT_MS);
+        return !!(sameLock || (sameLocalRoom && localNotExpired));
+    }
+
+    function getRoomActivityStartedAt(lock, config) {
+        const candidates = [
+            lock && lock.locked_at,
+            lock && lock.control_granted_at,
+            lock && lock.heartbeat_at,
+            config && config.status_changed_at,
+            config && config.updated_at
+        ].map(v => Number(v || 0)).filter(Boolean);
+        return candidates.length ? Math.max(...candidates) : 0;
+    }
+
+    function isRoomActivityExpired(lock, config) {
+        const startedAt = getRoomActivityStartedAt(lock, config);
+        return startedAt ? (Date.now() - startedAt >= TEACHER_SESSION_LIMIT_MS) : false;
+    }
+
+
+
     function getDefaultGameConfig() {
         return {
             max_teams: 8,
@@ -1849,25 +1915,43 @@
             roomRefForCode(code, 'teacher_lock').once('value'),
             roomRefForCode(code, 'game_config').once('value')
         ]);
+
         const lock = lockSnap.val() || null;
         const config = configSnap.val() || {};
-        const expired = isTeacherRoomExpired(lock);
-        const hasActiveLock = !!(lock && lock.teacher_token && !expired);
+        const status = config.status || 'waiting';
+        const lockExpired = isTeacherRoomExpired(lock);
+        const activityExpired = isRoomActivityExpired(lock, config);
+        const endedByTeacher = status === 'game_over';
+
+        // 6시간이 지났거나 수업 종료 상태면 방 선택 화면에서는 사용 가능으로 보입니다.
+        if (lockExpired || activityExpired || endedByTeacher) {
+            return { code, lock, config, expired: true, state: 'available', label: '사용 가능' };
+        }
+
+        const sameTeacher = isSameTeacherCachedRoom(code, lock);
+        const hasActiveLock = !!(lock && lock.teacher_token && !lockExpired);
 
         let state = 'available';
         let label = '사용 가능';
 
         if (hasActiveLock) {
-            if ((config.status || 'waiting') === 'playing') {
+            if (sameTeacher) {
+                state = 'available';
+                label = '내가 사용 중';
+            } else if (status === 'playing') {
                 state = 'playing';
                 label = '게임 중';
             } else {
                 state = 'in_use';
                 label = '사용 중';
             }
+        } else if (status !== 'waiting') {
+            // 이전 교사 화면/네트워크 상황 때문에 잠금이 없어도 수업이 끝나지 않은 방은 막습니다.
+            state = status === 'playing' ? 'playing' : 'in_use';
+            label = status === 'playing' ? '게임 중' : '사용 중';
         }
 
-        return { code, lock, config, expired, state, label };
+        return { code, lock, config, expired: false, state, label, sameTeacher };
     }
 
     async function resetRoomForNewClass(code) {
@@ -1882,18 +1966,16 @@
 
     async function prepareTeacherMarketEntry(code) {
         const availability = await getRoomAvailability(code);
-        const myToken = getTeacherToken();
-        const lock = availability.lock || {};
-        const sameTeacherDevice = lock.teacher_token && lock.teacher_token === myToken;
+        const status = (availability.config && availability.config.status) || 'waiting';
 
-        if (availability.expired) {
+        if (availability.expired || status === 'game_over') {
             await resetRoomForNewClass(code);
             roomAvailabilityCache[code] = { state: 'available', label: '사용 가능' };
             return true;
         }
 
-        if (lock.teacher_token && !sameTeacherDevice) {
-            alert(`${getRoomLabel(code)} 시장은 현재 ${availability.label}입니다.\n다른 교사가 사용 중인 시장에는 들어갈 수 없습니다.\n\n시장 사용 시작 후 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.`);
+        if (availability.state === 'in_use' || availability.state === 'playing') {
+            alert(`${getRoomLabel(code)} 시장은 현재 ${availability.label}입니다.\n수업 종료가 되지 않은 시장에는 다른 교사가 들어갈 수 없습니다.\n\n기존 교사가 다시 접속하면 저장된 교사 기기로 재입장할 수 있고, 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.`);
             return false;
         }
 
@@ -1919,6 +2001,7 @@
         if (!isTeacherRoomExpired(teacherLockState)) return false;
 
         await resetRoomForNewClass(currentRoomCode);
+        clearTeacherActiveRoom(currentRoomCode);
         alert('시장 사용 시간이 6시간을 지나 자동 종료되었습니다.\n학생 데이터와 게임 기록이 초기화되었고, 이 시장은 다시 사용 가능합니다.');
         goHome(true, false);
         return true;
@@ -2311,7 +2394,7 @@
         const snap = await lockRef.get();
         teacherLockState = snap.val() || null;
         teacherIsController = !!(teacherLockState && teacherLockState.teacher_token === token && !isTeacherRoomExpired(teacherLockState));
-        if (teacherIsController) startTeacherPresence();
+        if (teacherIsController) { saveTeacherActiveRoom(currentRoomCode); startTeacherPresence(); }
         else stopTeacherPresence(false);
         updateTeacherLockBadge();
         applyTeacherControlLockToButtons();
@@ -2765,7 +2848,7 @@
 
         if (title) title.innerText = mode === 'teacher' ? '👨‍🏫 교사 시장 선택' : '📱 학생 시장 선택';
         if (desc) desc.innerText = mode === 'teacher'
-            ? '사용할 시장을 선택하세요. 사용 중인 시장은 입장할 수 없고, 6시간이 지나면 자동 종료되어 다시 사용 가능합니다.'
+            ? '사용할 시장을 선택하세요. 수업 종료가 되지 않은 시장은 다른 교사가 들어갈 수 없습니다. 기존 교사는 저장된 기기로 다시 들어갈 수 있고, 6시간이 지나면 자동 종료됩니다.'
             : '선생님이 알려준 시장 방을 선택하세요. 잘못 선택해도 홈/방 다시 선택으로 나올 수 있습니다.';
 
         if (teacherNameField) teacherNameField.style.display = 'none';
@@ -4223,7 +4306,10 @@
         if (!guardTeacherControl('강제 시상식')) return;
         if(askForceEndConfirmation()) {
             currentMode = 'teacher';
-            gameConfigRef().update({ status: 'game_over', updated_at: Date.now() });
+            gameConfigRef().update({ status: 'game_over', updated_at: Date.now(), status_changed_at: Date.now() }).then(() => {
+                roomRef('teacher_lock').remove();
+                clearTeacherActiveRoom(currentRoomCode);
+            });
         }
     }
 
