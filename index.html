@@ -4594,15 +4594,18 @@
         tradeCommitInProgress = true;
 
         try {
-            const result = await signAndMaybeCommitTrade(myName, targetTeam, inputPin);
-            if (!result || !result.committed) {
-                const reason = await describeTradeFailure(myName, targetTeam);
-                alert(`⚠️ 거래가 체결되지 않았습니다.\n\n원인: ${reason}`);
-                return;
-            }
+            await updatePlayer(myName, {
+                target_team: targetTeam,
+                typed_pin: inputPin,
+                trade_version: Date.now()
+            });
 
-            const room = result.snapshot ? (result.snapshot.val() || {}) : {};
-            const myData = room.players && room.players[myName] ? room.players[myName] : {};
+            const [targetSnap, mySnap] = await Promise.all([
+                playersRef(targetTeam).get(),
+                playersRef(myName).get()
+            ]);
+            const targetData = targetSnap.val() || {};
+            const myData = mySnap.val() || {};
             latestSelfPlayerData = myData;
 
             if (myData.last_trade && myData.last_trade.partner === targetTeam && (myData.trade_count || 0) === 0) {
@@ -4613,8 +4616,100 @@
                 return;
             }
 
-            watchTargetTeam(targetTeam);
-            alert("📡 내 서명이 등록되었습니다.\n상대도 내 코드를 입력한 뒤 계약 승인을 누르면 체결됩니다.");
+            const myTradeCount = Number(myData.trade_count || 0);
+            const targetTradeCount = Number(targetData.trade_count || 0);
+
+            if (!myData.player_name || !myTradeCount) {
+                await updatePlayer(myName, { target_team: "", typed_pin: "", trade_version: Date.now() });
+                detachTargetWatch();
+                clearTargetUIOnly();
+                alert('먼저 주식을 장터에 등록해 주세요.');
+                return;
+            }
+
+            if (!targetData.player_name || !targetTradeCount) {
+                cleanupStaleTarget('상대 주문이 취소됐어요.');
+                return;
+            }
+
+            if (targetData.target_team && targetData.target_team !== myName) {
+                cleanupStaleTarget('상대가 다른 거래 중이에요.');
+                return;
+            }
+
+            if (targetData.target_team !== myName) {
+                watchTargetTeam(targetTeam);
+                alert('주문 접수! 상대 승인 대기 중');
+                return;
+            }
+
+            const myPin = String(myData.pin_code || '').trim();
+            const myTypedPin = String(myData.typed_pin || '').trim();
+            const targetPin = String(targetData.pin_code || '').trim();
+            const targetTypedPin = String(targetData.typed_pin || '').trim();
+
+            if (targetTypedPin !== myPin || myTypedPin !== targetPin) {
+                watchTargetTeam(targetTeam);
+                alert('체결 코드를 확인해 주세요.');
+                return;
+            }
+
+            if (myTradeCount !== targetTradeCount) {
+                watchTargetTeam(targetTeam);
+                alert('주식 수가 맞지 않아요.');
+                return;
+            }
+
+            const mySelected = toCardArray(myData.offer_cards);
+            const targetSelected = toCardArray(targetData.offer_cards);
+            if (mySelected.length !== myTradeCount || targetSelected.length !== targetTradeCount) {
+                alert('주식 상태가 바뀌었어요. 다시 등록해 주세요.');
+                return;
+            }
+
+            const myRemaining = removeCardsFromHand(myData.cards, mySelected);
+            const targetRemaining = removeCardsFromHand(targetData.cards, targetSelected);
+            if (!myRemaining || !targetRemaining) {
+                alert('주식 상태가 바뀌었어요. 다시 등록해 주세요.');
+                return;
+            }
+
+            const tradeId = Date.now();
+            const myNewCards = myRemaining.concat(targetSelected);
+            const targetNewCards = targetRemaining.concat(mySelected);
+            const atomicUpdates = {};
+            atomicUpdates['/players/' + myName + '/cards'] = myNewCards;
+            atomicUpdates['/players/' + myName + '/trade_count'] = 0;
+            atomicUpdates['/players/' + myName + '/pin_code'] = "";
+            atomicUpdates['/players/' + myName + '/offer_cards'] = null;
+            atomicUpdates['/players/' + myName + '/target_team'] = "";
+            atomicUpdates['/players/' + myName + '/typed_pin'] = "";
+            atomicUpdates['/players/' + myName + '/last_trade'] = { partner: targetTeam, ts: tradeId };
+            atomicUpdates['/players/' + myName + '/trade_version'] = Number(myData.trade_version || 0) + 1;
+            atomicUpdates['/players/' + targetTeam + '/cards'] = targetNewCards;
+            atomicUpdates['/players/' + targetTeam + '/trade_count'] = 0;
+            atomicUpdates['/players/' + targetTeam + '/pin_code'] = "";
+            atomicUpdates['/players/' + targetTeam + '/offer_cards'] = null;
+            atomicUpdates['/players/' + targetTeam + '/target_team'] = "";
+            atomicUpdates['/players/' + targetTeam + '/typed_pin'] = "";
+            atomicUpdates['/players/' + targetTeam + '/last_trade'] = { partner: myName, ts: tradeId };
+            atomicUpdates['/players/' + targetTeam + '/trade_version'] = Number(targetData.trade_version || 0) + 1;
+
+            await updateRoom(atomicUpdates);
+            myCards = myNewCards;
+            latestSelfPlayerData = {
+                ...myData,
+                cards: myNewCards,
+                trade_count: 0,
+                pin_code: "",
+                offer_cards: null,
+                target_team: "",
+                typed_pin: "",
+                last_trade: { partner: targetTeam, ts: tradeId }
+            };
+            detachTargetWatch();
+            clearTradeUI();
+            renderPortfolio();
         } catch (err) {
             console.error('거래 체결 실패:', err);
             alert('거래 체결 중 오류가 발생했습니다. 다시 시도해 주세요.');
@@ -4665,13 +4760,15 @@
         watchedTargetRef.on('value', (snap) => {
             if (targetCleanupInProgress || globalStatus !== 'playing') return;
             const targetData = snap.val() || {};
-            if (!targetData.player_name || (targetData.trade_count || 0) === 0 || (targetData.target_team && targetData.target_team !== myName)) {
-                handleWatchedTargetChanged(teamName);
+            if (!targetData.player_name || (targetData.trade_count || 0) === 0) {
+                handleWatchedTargetChanged(teamName, '상대 주문이 취소됐어요.');
+            } else if (targetData.target_team && targetData.target_team !== myName) {
+                handleWatchedTargetChanged(teamName, '상대가 다른 거래 중이에요.');
             }
         });
     }
 
-    async function handleWatchedTargetChanged(teamName) {
+    async function handleWatchedTargetChanged(teamName, message = '상대 주문이 취소됐어요.') {
         if (targetCleanupInProgress || !myName) return;
         const mySnap = await playersRef(myName).get();
         const myData = mySnap.val() || {};
@@ -4685,7 +4782,7 @@
             clearTargetUIOnly();
             return;
         }
-        cleanupStaleTarget('⚠️ 상대 투자자의 거래 상태가 바뀌었습니다. 다시 골라주세요.');
+        cleanupStaleTarget(message);
     }
 
     function cleanupStaleTarget(message) {
@@ -4728,7 +4825,7 @@
             } else if (data.last_trade && data.last_trade.ts) {
                 if (data.last_trade.ts > (lastSeenTradeTs || 0)) {
                     lastSeenTradeTs = data.last_trade.ts;
-                    alert(`📈 [${teamLabelByName(data.last_trade.partner)}]와 거래가 체결되었습니다! 손패를 확인하세요.`);
+                    alert('체결 성공! 주식 매매 완료');
                 }
             }
 
