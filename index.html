@@ -4124,9 +4124,10 @@
     function renderCurrentStudentCardsFromCache() {
         if (!myName || globalStatus !== 'playing') return false;
         const cached = latestSelfPlayerData || {};
-        const cards = Array.isArray(cached.cards) ? cached.cards : myCards;
+        const cachedCards = toCardArray(cached.cards);
+        const cards = cachedCards.length ? cachedCards : myCards;
         if (globalDealId && cached.cards_deal_id !== globalDealId) return false;
-        if (Array.isArray(cards) && cards.length) {
+        if (cards.length) {
             myCards = cards;
             maybeClearTradeUIFromSelfState(cached);
             renderPortfolio();
@@ -4139,9 +4140,9 @@
         if (!myName || globalStatus !== 'playing') return;
         playersRef(myName).once('value').then((snap) => {
             const data = snap.val() || {};
-            const cards = data.cards;
+            const cards = toCardArray(data.cards);
             if (globalDealId && data.cards_deal_id !== globalDealId) return;
-            if (Array.isArray(cards) && cards.length && globalStatus === 'playing') {
+            if (cards.length && globalStatus === 'playing') {
                 latestSelfPlayerData = data;
                 myCards = cards;
                 maybeClearTradeUIFromSelfState(data);
@@ -4239,9 +4240,25 @@
         gameConfigRef().update({ status: 'ended', winner: myName, corner_type: type, winning_stock: targetStock, status_changed_at: Date.now(), updated_at: Date.now() });
     }
 
+    function toCardArray(value) {
+        if (Array.isArray(value)) return value.filter(card => card !== undefined && card !== null);
+        if (value && typeof value === 'object') {
+            return Object.keys(value)
+                .sort((a, b) => {
+                    const na = Number(a);
+                    const nb = Number(b);
+                    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+                    return String(a).localeCompare(String(b));
+                })
+                .map(key => value[key])
+                .filter(card => card !== undefined && card !== null);
+        }
+        return [];
+    }
+
     function removeCardsFromHand(cards, selectedCards) {
-        const nextCards = Array.isArray(cards) ? [...cards] : [];
-        for (const card of selectedCards || []) {
+        const nextCards = toCardArray(cards);
+        for (const card of toCardArray(selectedCards)) {
             const idx = nextCards.indexOf(card);
             if (idx === -1) return null;
             nextCards.splice(idx, 1);
@@ -4307,8 +4324,8 @@
             if (target.typed_pin !== me.pin_code || me.typed_pin !== target.pin_code) return;
             if (inputPin && me.typed_pin !== inputPin) return;
 
-            const mySelected = Array.isArray(me.offer_cards) ? [...me.offer_cards] : [];
-            const targetSelected = Array.isArray(target.offer_cards) ? [...target.offer_cards] : [];
+            const mySelected = toCardArray(me.offer_cards);
+            const targetSelected = toCardArray(target.offer_cards);
             if (mySelected.length !== myTradeCount || targetSelected.length !== targetTradeCount) return;
 
             const myRemaining = removeCardsFromHand(me.cards, mySelected);
@@ -4383,8 +4400,8 @@
                 return room;
             }
 
-            const mySelected = Array.isArray(signedMe.offer_cards) ? [...signedMe.offer_cards] : [];
-            const targetSelected = Array.isArray(target.offer_cards) ? [...target.offer_cards] : [];
+            const mySelected = toCardArray(signedMe.offer_cards);
+            const targetSelected = toCardArray(target.offer_cards);
             if (mySelected.length !== myTradeCount || targetSelected.length !== targetTradeCount) return;
 
             const myRemaining = removeCardsFromHand(signedMe.cards, mySelected);
@@ -4421,6 +4438,36 @@
         });
     }
 
+    async function describeTradeFailure(myTeam, targetTeam) {
+        try {
+            const [mySnap, targetSnap] = await Promise.all([
+                playersRef(myTeam).get(),
+                playersRef(targetTeam).get()
+            ]);
+            const me = mySnap.val() || {};
+            const target = targetSnap.val() || {};
+            const myTradeCount = Number(me.trade_count || 0);
+            const targetTradeCount = Number(target.trade_count || 0);
+
+            if (!me.player_name) return '내 투자자 계좌 데이터가 없습니다.';
+            if (!target.player_name) return '상대 투자자 계좌 데이터가 없습니다.';
+            if (!myTradeCount) return '내 카드가 장터에 등록되어 있지 않습니다.';
+            if (!targetTradeCount) return '상대 카드가 장터에 등록되어 있지 않습니다.';
+            if (target.target_team && target.target_team !== myTeam) return '상대가 다른 투자자를 선택한 상태입니다.';
+
+            const mySelected = toCardArray(me.offer_cards);
+            const targetSelected = toCardArray(target.offer_cards);
+            if (mySelected.length !== myTradeCount) return `내 등록 카드 수(${mySelected.length})와 외침 수(${myTradeCount})가 다릅니다.`;
+            if (targetSelected.length !== targetTradeCount) return `상대 등록 카드 수(${targetSelected.length})와 외침 수(${targetTradeCount})가 다릅니다.`;
+            if (!removeCardsFromHand(me.cards, mySelected)) return '내 손패에서 등록 카드를 찾지 못했습니다.';
+            if (!removeCardsFromHand(target.cards, targetSelected)) return '상대 손패에서 등록 카드를 찾지 못했습니다.';
+            return '거래 상태가 맞지 않습니다. 양쪽 모두 거래 취소 후 다시 등록해 주세요.';
+        } catch (err) {
+            console.warn('거래 실패 원인 확인 실패:', err);
+            return '거래 상태를 확인하지 못했습니다.';
+        }
+    }
+
     async function finalizeMatchedTradeIfReady(targetTeam, inputPin = '') {
         if (!myName || !targetTeam || globalStatus !== 'playing') return false;
         if (tradeCommitInProgress || autoTradeFinalizeInProgress) return false;
@@ -4446,7 +4493,7 @@
             if (commitResult && commitResult.committed) {
                 const room = commitResult.snapshot ? (commitResult.snapshot.val() || {}) : {};
                 latestSelfPlayerData = room.players && room.players[myName] ? room.players[myName] : latestSelfPlayerData;
-                myCards = Array.isArray(latestSelfPlayerData.cards) ? latestSelfPlayerData.cards : myCards;
+                myCards = toCardArray(latestSelfPlayerData.cards).length ? toCardArray(latestSelfPlayerData.cards) : myCards;
                 detachTargetWatch();
                 clearTradeUI();
                 renderPortfolio();
@@ -4489,7 +4536,7 @@
         try {
             txnResult = await playersRef(myName).transaction((player) => {
                 const p = player || {};
-                if (!Array.isArray(p.cards) || !removeCardsFromHand(p.cards, activeCards)) return;
+                if (!toCardArray(p.cards).length || !removeCardsFromHand(p.cards, activeCards)) return;
                 return {
                     ...p,
                     trade_count: tradeCount,
@@ -4549,7 +4596,8 @@
         try {
             const result = await signAndMaybeCommitTrade(myName, targetTeam, inputPin);
             if (!result || !result.committed) {
-                alert('⚠️ 상대가 거래를 취소했거나 다른 거래를 진행 중입니다. 다시 확인해 주세요.');
+                const reason = await describeTradeFailure(myName, targetTeam);
+                alert(`⚠️ 거래가 체결되지 않았습니다.\n\n원인: ${reason}`);
                 return;
             }
 
@@ -4558,7 +4606,7 @@
             latestSelfPlayerData = myData;
 
             if (myData.last_trade && myData.last_trade.partner === targetTeam && (myData.trade_count || 0) === 0) {
-                myCards = Array.isArray(myData.cards) ? myData.cards : myCards;
+                myCards = toCardArray(myData.cards).length ? toCardArray(myData.cards) : myCards;
                 detachTargetWatch();
                 clearTradeUI();
                 renderPortfolio();
