@@ -1834,6 +1834,11 @@
     let lastTargetTileClickTs = 0;
     let gameConfigListenerRef = null;
     let playersListenerRef = null;
+    let latestSelfPlayerData = {};
+    let lastSelfTradeCount = 0;
+    let lastSelfTradeTs = 0;
+    let lastSelfDealId = "";
+    let tradeCommitInProgress = false;
     let savedSessionRecoveryTimer = null;
     let savedSessionRecoveryRunning = false;
 
@@ -1846,6 +1851,7 @@
     let teacherIsController = false;
     let studentHeartbeatTimer = null;
     let studentPresenceRef = null;
+    let studentPublicPresenceRef = null;
     let pendingStudentAccountName = '';
     let pendingStudentAccountChangeUsed = false;
     let teacherUiRefreshTimer = null;
@@ -1860,9 +1866,14 @@
         return room ? room.label : ROOM_MARKETS[0].label;
     }
 
+    function roomPathForCode(code, path = "") {
+        const cleanPath = String(path || "").replace(/^\/+/, "");
+        const normalized = normalizeRoomCode(code);
+        return cleanPath ? `rooms/${normalized}/${cleanPath}` : `rooms/${normalized}`;
+    }
+
     function roomRefForCode(code, path = '') {
-        const base = database.ref(roomPath(normalizeRoomCode(code)));
-        return path ? base.child(path) : base;
+        return database.ref(roomPathForCode(code, path));
     }
 
     function getTeacherActiveRoomInfo() {
@@ -2192,6 +2203,8 @@
         const normalized = normalizeRoomCode(code);
         await Promise.all([
             roomRefForCode(normalized, 'players').remove(),
+            roomRefForCode(normalized, 'player_public').remove(),
+            roomRefForCode(normalized, 'trade_locks').remove(),
             roomRefForCode(normalized, 'teacher_lock').remove(),
             roomRefForCode(normalized, 'game_config').set(getDefaultGameConfig())
         ]);
@@ -2288,9 +2301,15 @@
         catch(e) {}
     }
 
+    const PUBLIC_PLAYER_FIELDS = new Set([
+        'player_name', 'joined', 'joined_session_id', 'ready',
+        'online', 'heartbeat_at', 'last_seen_at',
+        'trade_count', 'target_team', 'round_earn', 'total_score',
+        'ban_until', 'cards_deal_id', 'trade_version'
+    ]);
+
     function roomPath(path = "") {
-        const cleanPath = String(path || "").replace(/^\/+/, "");
-        return cleanPath ? `rooms/${currentRoomCode}/${cleanPath}` : `rooms/${currentRoomCode}`;
+        return roomPathForCode(currentRoomCode, path);
     }
 
     function roomRef(path = "") {
@@ -2307,12 +2326,71 @@
         return roomRef(cleanPath ? `players/${cleanPath}` : "players");
     }
 
+    function publicPlayersRef(path = "") {
+        const cleanPath = String(path || "").replace(/^\/+/, "");
+        return roomRef(cleanPath ? `player_public/${cleanPath}` : "player_public");
+    }
+
+    function getPublicPlayerData(player = {}) {
+        const publicData = {};
+        PUBLIC_PLAYER_FIELDS.forEach(field => {
+            if (Object.prototype.hasOwnProperty.call(player, field)) {
+                publicData[field] = player[field];
+            }
+        });
+        return publicData;
+    }
+
+    function addPublicPlayerMirror(scopedUpdates, key, value) {
+        const parts = String(key || "").replace(/^\/+/, "").split('/');
+        if (parts[0] !== 'players' || !parts[1]) return;
+        const teamName = parts[1];
+        if (parts.length === 2) {
+            scopedUpdates[`player_public/${teamName}`] = value && typeof value === 'object'
+                ? getPublicPlayerData(value)
+                : value;
+            return;
+        }
+        if (parts.length === 3 && PUBLIC_PLAYER_FIELDS.has(parts[2])) {
+            scopedUpdates[`player_public/${teamName}/${parts[2]}`] = value;
+        }
+    }
+
     function updateRoom(updates) {
         const scopedUpdates = {};
         Object.keys(updates || {}).forEach(key => {
-            scopedUpdates[String(key).replace(/^\/+/, "")] = updates[key];
+            const cleanKey = String(key).replace(/^\/+/, "");
+            scopedUpdates[cleanKey] = updates[key];
+            addPublicPlayerMirror(scopedUpdates, cleanKey, updates[key]);
         });
         return roomRef().update(scopedUpdates);
+    }
+
+    function updatePlayer(teamName, updates) {
+        const scopedUpdates = {};
+        Object.keys(updates || {}).forEach(field => {
+            scopedUpdates[`/players/${teamName}/${field}`] = updates[field];
+        });
+        return updateRoom(scopedUpdates);
+    }
+
+    function setPlayersForNewGame(playersPayload) {
+        const publicPayload = {};
+        Object.keys(playersPayload || {}).forEach(teamName => {
+            publicPayload[teamName] = getPublicPlayerData(playersPayload[teamName]);
+        });
+        return roomRef().update({
+            players: playersPayload || {},
+            player_public: publicPayload
+        });
+    }
+
+    function clearPlayerCollectionsForCurrentRoom() {
+        return roomRef().update({
+            players: null,
+            player_public: null,
+            trade_locks: null
+        });
     }
 
     function updateRoomLabels() {
@@ -2384,10 +2462,10 @@
     }
 
     function findMySelectedAccountName(playersData = latestPlayersData) {
-        const token = getStudentDeviceToken();
+        const savedName = localStorage.getItem('pit_logged_team') || '';
         return Object.keys(playersData || {}).find(name => {
             const p = playersData[name] || {};
-            return p.joined && p.device_token === token && (!globalEntrySessionId || p.joined_session_id === globalEntrySessionId);
+            return p.joined && name === savedName && (!globalEntrySessionId || p.joined_session_id === globalEntrySessionId);
         }) || "";
     }
 
@@ -2724,19 +2802,25 @@
         if (studentHeartbeatTimer) clearInterval(studentHeartbeatTimer);
         const token = getStudentDeviceToken();
         studentPresenceRef = playersRef(myName);
-        studentPresenceRef.update({
+        studentPublicPresenceRef = publicPlayersRef(myName);
+        const presenceUpdate = {
             online: true,
             device_token: token,
             heartbeat_at: Date.now(),
             last_seen_at: Date.now()
-        });
+        };
+        updatePlayer(myName, presenceUpdate);
         studentPresenceRef.onDisconnect().update({
+            online: false,
+            last_seen_at: Date.now()
+        });
+        studentPublicPresenceRef.onDisconnect().update({
             online: false,
             last_seen_at: Date.now()
         });
         studentHeartbeatTimer = setInterval(() => {
             if (!myName || !studentPresenceRef) return;
-            studentPresenceRef.update({
+            updatePlayer(myName, {
                 online: true,
                 device_token: token,
                 heartbeat_at: Date.now(),
@@ -2751,15 +2835,16 @@
             studentHeartbeatTimer = null;
         }
         if (markOffline && studentPresenceRef && myName) {
-            studentPresenceRef.update({ online: false, last_seen_at: Date.now() }).catch(() => {});
+            updatePlayer(myName, { online: false, last_seen_at: Date.now() }).catch(() => {});
         }
         studentPresenceRef = null;
+        studentPublicPresenceRef = null;
     }
 
     async function leaveCurrentStudentRoom() {
         if (!database || !myName) return;
         try {
-            await playersRef(myName).update({
+            await updatePlayer(myName, {
                 joined: false,
                 ready: false,
                 online: false,
@@ -2769,6 +2854,7 @@
                 offer_cards: null,
                 target_team: "",
                 typed_pin: "",
+                trade_version: Date.now(),
                 last_seen_at: Date.now()
             });
         } catch(e) {}
@@ -2796,7 +2882,7 @@
             const stale = last && (Date.now() - last > TEACHER_LOCK_STALE_MS);
 
             if (stale && !hasOnlineStudent) {
-                await playersRef().remove();
+                await clearPlayerCollectionsForCurrentRoom();
                 await gameConfigRef().update({
                     status: 'waiting',
                     winner: "",
@@ -2836,19 +2922,20 @@
             pin_code: "",
             offer_cards: null,
             target_team: "",
-            typed_pin: ""
+            typed_pin: "",
+            trade_version: Date.now()
         };
 
         if (choice === '1') {
-            await playersRef(teamName).update({ ready: false });
+            await updatePlayer(teamName, { ready: false });
             return;
         }
         if (choice === '2') {
-            await playersRef(teamName).update(baseTradeReset);
+            await updatePlayer(teamName, baseTradeReset);
             return;
         }
         if (choice === '3') {
-            await playersRef(teamName).update({
+            await updatePlayer(teamName, {
                 joined: false,
                 ready: false,
                 online: false,
@@ -2861,7 +2948,7 @@
         if (choice === '4') {
             const ok = confirm(`[${label}] 학생을 현재 방에서 내보낼까요?`);
             if (!ok) return;
-            await playersRef(teamName).update({
+            await updatePlayer(teamName, {
                 joined: false,
                 ready: false,
                 online: false,
@@ -2915,7 +3002,7 @@
     function classifyRoomStatus(roomData) {
         if (!roomData) return { kind: 'empty', label: '비어있음', emoji: '🟢', joinedCount: 0 };
         const config = roomData.game_config || {};
-        const players = roomData.players || {};
+        const players = roomData.player_public || roomData.players || {};
         const sessionId = config.entry_session_id || "";
         let joinedCount = 0;
         Object.keys(players).forEach(name => {
@@ -3259,6 +3346,10 @@
         selectedIndices = [];
         selectedTargetTeam = '';
         latestPlayersData = {};
+        latestSelfPlayerData = {};
+        lastSelfTradeCount = 0;
+        lastSelfTradeTs = 0;
+        lastSelfDealId = "";
         document.getElementById('teacher-section').style.display = 'none';
         document.getElementById('student-section').style.display = 'none';
         document.getElementById('student-gate-waiting').style.display = 'none';
@@ -3337,6 +3428,10 @@
         }
         detachTargetWatch();
         myCards = [];
+        latestSelfPlayerData = {};
+        lastSelfTradeCount = 0;
+        lastSelfTradeTs = 0;
+        lastSelfDealId = "";
         selectedIndices = [];
         myName = "";
         currentMode = "student";
@@ -3411,7 +3506,8 @@
                 const teacherLike = currentMode === 'teacher' || currentMode === "";
                 document.getElementById('reset-btn-teacher').style.display = teacherLike ? 'block' : 'none';
                 document.getElementById('close-btn-student').style.display = teacherLike ? 'none' : 'block';
-                playersRef().once('value').then((pSnap) => { renderFinalPodiumGraphics(pSnap.val() || {}); });
+                const podiumRef = currentMode === 'student' ? publicPlayersRef() : playersRef();
+                podiumRef.once('value').then((pSnap) => { renderFinalPodiumGraphics(pSnap.val() || {}); });
                 return;
             }
 
@@ -3422,14 +3518,11 @@
             if (currentMode === 'student') { handleStudentStatusChange(config); }
         });
 
-        playersListenerRef = playersRef();
+        playersListenerRef = currentMode === 'teacher' ? playersRef() : publicPlayersRef();
         playersListenerRef.on('value', (pSnap) => {
             latestPlayersData = pSnap.val() || {};
             if (currentMode === 'student' && document.getElementById('student-gate-login').style.display === 'flex') {
                 renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
-            }
-            if (currentMode === 'student' && myName && globalStatus === 'playing') {
-                scheduleStudentCardRefresh();
             }
             if (currentMode === 'teacher') {
                 renderBigHandPicker();
@@ -3569,6 +3662,10 @@
         renderCardNotice('교사가 게임을 시작해야 카드를 받습니다', '시장 개장 후 내 카드가 자동으로 표시됩니다.');
         tradeWatchBootstrapped = false;
         lastSeenTradeTs = null;
+        latestSelfPlayerData = {};
+        lastSelfTradeCount = 0;
+        lastSelfTradeTs = 0;
+        lastSelfDealId = "";
         startStudentPresence();
         initStudentSelfListener();
     }
@@ -3586,7 +3683,7 @@
         gameConfigRef().once('value').then((snap) => {
             handleStudentStatusChange(snap.val() || {});
         });
-        playersRef().once('value').then((pSnap) => {
+        publicPlayersRef().once('value').then((pSnap) => {
             latestPlayersData = pSnap.val() || {};
             renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
         });
@@ -3637,7 +3734,8 @@
             const teamInfo = MASTER_TEAMS[i-1]; if (!teamInfo) continue;
             const player = playersData[teamInfo.name];
             const isClaimed = player && player.joined && (!globalEntrySessionId || player.joined_session_id === globalEntrySessionId);
-            const isMine = isClaimed && player.device_token === myDeviceToken;
+            const savedName = localStorage.getItem('pit_logged_team') || '';
+            const isMine = isClaimed && (teamInfo.name === myName || teamInfo.name === savedName || player.device_token === myDeviceToken);
             const isClaimedByOther = isClaimed && !isMine;
             const isPending = pendingStudentAccountName === teamInfo.name;
 
@@ -3722,14 +3820,16 @@
 
         if (!txnResult || !txnResult.committed) {
             const latestPlayer = txnResult && txnResult.snapshot ? (txnResult.snapshot.val() || {}) : {};
-            latestPlayersData[teamInfo.name] = latestPlayer;
+            latestPlayersData[teamInfo.name] = getPublicPlayerData(latestPlayer);
             alert('방금 다른 학생이 이 계좌를 선택했습니다. 다른 계좌를 선택해 주세요.');
             resetPendingStudentAccountSelection();
             renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
             return;
         }
 
-        latestPlayersData[teamInfo.name] = txnResult.snapshot ? (txnResult.snapshot.val() || {}) : {};
+        const claimedPlayer = txnResult.snapshot ? (txnResult.snapshot.val() || {}) : {};
+        latestPlayersData[teamInfo.name] = getPublicPlayerData(claimedPlayer);
+        await publicPlayersRef(teamInfo.name).set(latestPlayersData[teamInfo.name]);
 
         if (pendingStudentAccountChangeUsed) setAccountChangeCount(1);
         setSavedStudentSession(teamInfo.name);
@@ -3751,7 +3851,7 @@
             location.reload();
             return;
         }
-        playersRef(myName).update({ player_name: myName, joined: true, joined_session_id: globalEntrySessionId || "" });
+        updatePlayer(myName, { player_name: myName, joined: true, joined_session_id: globalEntrySessionId || "" });
     }
 
     function buildTargetTilesLayout() {
@@ -3880,10 +3980,11 @@
                 offer_cards: null, round_earn: 0, total_score: 0,
                 ready: false, ban_until: null, target_team: "", typed_pin: "",
                 last_trade: null, cards_deal_id: "",
-                online: false, device_token: "", heartbeat_at: 0, last_seen_at: 0
+                online: false, device_token: "", heartbeat_at: 0, last_seen_at: 0,
+                trade_version: 0
             };
         }
-        playersRef().set(playersPayload).then(() => {
+        setPlayersForNewGame(playersPayload).then(() => {
             return gameConfigRef().update({
                 max_teams: maxTeams, end_score: endScore, status: 'ready_check',
                 winner: "", corner_type: "", winning_stock: "",
@@ -3924,7 +4025,8 @@
             '/game_config/big_hand_teams': bigHandTeams,
             '/game_config/deal_id': dealId,
             '/game_config/updated_at': Date.now(),
-            '/game_config/status_changed_at': Date.now()
+            '/game_config/status_changed_at': Date.now(),
+            '/trade_locks': null
         };
         for(let i = 1; i <= globalMaxTeams; i++) {
             const tName = MASTER_TEAMS[i-1].name;
@@ -3940,6 +4042,7 @@
             updates['/players/' + tName + '/target_team'] = "";
             updates['/players/' + tName + '/typed_pin'] = "";
             updates['/players/' + tName + '/last_trade'] = null;
+            updates['/players/' + tName + '/trade_version'] = Date.now();
         }
         updateRoom(updates);
     }
@@ -3949,19 +4052,31 @@
             alert('준비 대기 상태에서만 준비 완료 버튼을 누를 수 있습니다.');
             return;
         }
-        playersRef(myName).update({ ready: true });
+        updatePlayer(myName, { ready: true });
         document.getElementById('student-ready-btn').style.display = 'none';
         document.getElementById('student-ready-status').style.display = 'block';
     }
 
+    function maybeClearTradeUIFromSelfState(data = {}) {
+        const nextTradeCount = Number(data.trade_count || 0);
+        const nextTradeTs = data.last_trade && data.last_trade.ts ? Number(data.last_trade.ts) : 0;
+        const nextDealId = data.cards_deal_id || "";
+        const dealChanged = !!(lastSelfDealId && nextDealId && lastSelfDealId !== nextDealId);
+        const tradeClosed = nextTradeCount === 0 && (lastSelfTradeCount > 0 || nextTradeTs !== lastSelfTradeTs);
+        if (dealChanged || tradeClosed) clearTradeUI();
+        lastSelfTradeCount = nextTradeCount;
+        lastSelfTradeTs = nextTradeTs;
+        if (nextDealId) lastSelfDealId = nextDealId;
+    }
+
     function renderCurrentStudentCardsFromCache() {
         if (!myName || globalStatus !== 'playing') return false;
-        const cached = latestPlayersData[myName] || {};
+        const cached = latestSelfPlayerData || {};
         const cards = Array.isArray(cached.cards) ? cached.cards : myCards;
         if (globalDealId && cached.cards_deal_id !== globalDealId) return false;
         if (Array.isArray(cards) && cards.length) {
             myCards = cards;
-            if ((cached.trade_count || 0) === 0) clearTradeUI();
+            maybeClearTradeUIFromSelfState(cached);
             renderPortfolio();
             return true;
         }
@@ -3975,8 +4090,9 @@
             const cards = data.cards;
             if (globalDealId && data.cards_deal_id !== globalDealId) return;
             if (Array.isArray(cards) && cards.length && globalStatus === 'playing') {
+                latestSelfPlayerData = data;
                 myCards = cards;
-                if ((data.trade_count || 0) === 0) clearTradeUI();
+                maybeClearTradeUIFromSelfState(data);
                 renderPortfolio();
             }
         });
@@ -4071,7 +4187,110 @@
         gameConfigRef().update({ status: 'ended', winner: myName, corner_type: type, winning_stock: targetStock, status_changed_at: Date.now(), updated_at: Date.now() });
     }
 
-    function postTrade() {
+    function removeCardsFromHand(cards, selectedCards) {
+        const nextCards = Array.isArray(cards) ? [...cards] : [];
+        for (const card of selectedCards || []) {
+            const idx = nextCards.indexOf(card);
+            if (idx === -1) return null;
+            nextCards.splice(idx, 1);
+        }
+        return nextCards;
+    }
+
+    function getTradeLockKey(a, b) {
+        const getId = (name) => {
+            const team = MASTER_TEAMS.find(t => t.name === name);
+            return team ? String(team.id).padStart(2, '0') : encodeURIComponent(name || '');
+        };
+        return [getId(a), getId(b)].sort().join('_');
+    }
+
+    async function acquireTradeLock(myTeam, targetTeam, token) {
+        const lockRef = roomRef(`trade_locks/${getTradeLockKey(myTeam, targetTeam)}`);
+        const now = Date.now();
+        const result = await lockRef.transaction((lock) => {
+            const expired = !lock || !lock.expires_at || lock.expires_at < now;
+            if (expired || lock.lock_token === token) {
+                return {
+                    lock_token: token,
+                    owner: myTeam,
+                    target: targetTeam,
+                    created_at: now,
+                    expires_at: now + 8000
+                };
+            }
+            return;
+        });
+        return { ok: !!(result && result.committed), ref: lockRef };
+    }
+
+    async function releaseTradeLock(lockRef, token) {
+        if (!lockRef || !token) return;
+        try {
+            const snap = await lockRef.get();
+            const lock = snap.val() || {};
+            if (lock.lock_token === token) await lockRef.remove();
+        } catch(e) {}
+    }
+
+    function syncRoomPublicPlayer(room, teamName) {
+        if (!room.player_public) room.player_public = {};
+        const player = room.players && room.players[teamName];
+        if (player) room.player_public[teamName] = getPublicPlayerData(player);
+    }
+
+    async function commitMatchedTrade(myTeam, targetTeam, inputPin) {
+        return roomRef().transaction((room) => {
+            if (!room || !room.players) return;
+            const players = room.players;
+            const me = players[myTeam] || {};
+            const target = players[targetTeam] || {};
+            const myTradeCount = Number(me.trade_count || 0);
+            const targetTradeCount = Number(target.trade_count || 0);
+
+            if (!myTradeCount || !targetTradeCount || myTradeCount !== targetTradeCount) return;
+            if (target.target_team !== myTeam || me.target_team !== targetTeam) return;
+            if (target.typed_pin !== me.pin_code || me.typed_pin !== target.pin_code || me.typed_pin !== inputPin) return;
+
+            const mySelected = Array.isArray(me.offer_cards) ? [...me.offer_cards] : [];
+            const targetSelected = Array.isArray(target.offer_cards) ? [...target.offer_cards] : [];
+            if (mySelected.length !== myTradeCount || targetSelected.length !== targetTradeCount) return;
+
+            const myRemaining = removeCardsFromHand(me.cards, mySelected);
+            const targetRemaining = removeCardsFromHand(target.cards, targetSelected);
+            if (!myRemaining || !targetRemaining) return;
+
+            const tradeId = Date.now();
+            players[myTeam] = {
+                ...me,
+                cards: myRemaining.concat(targetSelected),
+                trade_count: 0,
+                pin_code: "",
+                offer_cards: null,
+                target_team: "",
+                typed_pin: "",
+                last_trade: { partner: targetTeam, ts: tradeId },
+                trade_version: Number(me.trade_version || 0) + 1
+            };
+            players[targetTeam] = {
+                ...target,
+                cards: targetRemaining.concat(mySelected),
+                trade_count: 0,
+                pin_code: "",
+                offer_cards: null,
+                target_team: "",
+                typed_pin: "",
+                last_trade: { partner: myTeam, ts: tradeId },
+                trade_version: Number(target.trade_version || 0) + 1
+            };
+            room.players = players;
+            syncRoomPublicPlayer(room, myTeam);
+            syncRoomPublicPlayer(room, targetTeam);
+            return room;
+        });
+    }
+
+    async function postTrade() {
         if(isMarketClosed || globalStatus !== 'playing') return alert('시장이 열려 있을 때만 거래할 수 있습니다.');
         if(selectedIndices.length === 0) return alert('카드를 선택하세요!');
         const activeCards = selectedIndices.map(idx => myCards[idx]);
@@ -4081,10 +4300,36 @@
         }
         const tradeCount = selectedIndices.length;
         const pinCode = Math.floor(10 + Math.random() * 90).toString();
-        playersRef(myName).update({
-            trade_count: tradeCount, pin_code: pinCode, offer_cards: activeCards,
-            target_team: "", typed_pin: ""
-        });
+
+        let txnResult = null;
+        try {
+            txnResult = await playersRef(myName).transaction((player) => {
+                const p = player || {};
+                if (!Array.isArray(p.cards) || !removeCardsFromHand(p.cards, activeCards)) return;
+                return {
+                    ...p,
+                    trade_count: tradeCount,
+                    pin_code: pinCode,
+                    offer_cards: activeCards,
+                    target_team: "",
+                    typed_pin: "",
+                    trade_version: Number(p.trade_version || 0) + 1
+                };
+            });
+        } catch (err) {
+            console.error('거래 등록 실패:', err);
+            alert('거래 등록 중 오류가 발생했습니다. 다시 시도해 주세요.');
+            return;
+        }
+
+        if (!txnResult || !txnResult.committed) {
+            alert('카드 상태가 바뀌었습니다. 손패를 확인한 뒤 다시 등록해 주세요.');
+            fetchAndRenderCurrentStudentCards();
+            return;
+        }
+
+        latestSelfPlayerData = txnResult.snapshot ? (txnResult.snapshot.val() || {}) : {};
+        await publicPlayersRef(myName).set(getPublicPlayerData(latestSelfPlayerData));
 
         const shoutBox = document.getElementById('shout-display-area');
         const codeValue = document.getElementById('inline-code-value');
@@ -4099,9 +4344,10 @@
     }
 
     function cancelTrade() {
-        playersRef(myName).update({
+        updatePlayer(myName, {
             trade_count: 0, pin_code: "", offer_cards: null,
-            target_team: "", typed_pin: ""
+            target_team: "", typed_pin: "",
+            trade_version: Date.now()
         }).then(() => {
             detachTargetWatch();
             clearTradeUI();
@@ -4113,70 +4359,61 @@
         const targetTeam = selectedTargetTeam;
         const inputPin = document.getElementById('target-pin-input').value.trim();
         if(!targetTeam || !inputPin) return alert('상대 타일을 누르고 상대방 외침 코드 2자리를 기입하세요.');
+        if (tradeCommitInProgress) return;
+        tradeCommitInProgress = true;
 
-        await playersRef(myName).update({ target_team: targetTeam, typed_pin: inputPin });
-
-        const targetSnap = await playersRef(targetTeam).get();
-        const targetData = targetSnap.val();
-        const mySnap = await playersRef(myName).get();
-        const myData = mySnap.val();
-
-        if (myData && myData.last_trade && myData.last_trade.partner === targetTeam && (myData.trade_count || 0) === 0) {
-            detachTargetWatch();
-            clearTradeUI();
-            return;
-        }
-
-        if (!targetData || targetData.trade_count === 0 || !myData || myData.trade_count === 0) {
-            cleanupStaleTarget('⚠️ 상대 투자자가 외침을 취소했거나 다른 거래를 끝냈습니다. 다시 골라주세요.');
-            return;
-        }
-        if (targetData.target_team && targetData.target_team !== myName) {
-            cleanupStaleTarget('⚠️ 상대 투자자가 다른 사람과 거래를 진행 중입니다. 다시 골라주세요.');
-            return;
-        }
-
-        if(targetData.target_team === myName && targetData.typed_pin === myData.pin_code &&
-           myData.typed_pin === targetData.pin_code && myData.trade_count === targetData.trade_count &&
-           Array.isArray(targetData.offer_cards) && targetData.offer_cards.length === myData.trade_count) {
-
-            let myNewCards = [...myCards];
-            const mySelected = selectedIndices.map(idx => myCards[idx]);
-            selectedIndices.slice().sort((a,b) => b-a).forEach(idx => myNewCards.splice(idx, 1));
-
-            let targetNewCards = [...targetData.cards];
-            const targetSelected = [...targetData.offer_cards];
-            for (const card of targetSelected) {
-                const i = targetNewCards.indexOf(card);
-                if (i !== -1) targetNewCards.splice(i, 1);
+        const lockToken = makeToken('trade_lock');
+        let lock = null;
+        try {
+            lock = await acquireTradeLock(myName, targetTeam, lockToken);
+            if (!lock.ok) {
+                alert('⚠️ 이 투자자는 방금 다른 거래를 처리 중입니다. 잠시 후 다시 시도해 주세요.');
+                return;
             }
-            myNewCards = myNewCards.concat(targetSelected);
-            targetNewCards = targetNewCards.concat(mySelected);
 
-            const tradeId = Date.now();
-            const atomicUpdates = {};
-            atomicUpdates['/players/' + myName + '/cards'] = myNewCards;
-            atomicUpdates['/players/' + myName + '/trade_count'] = 0;
-            atomicUpdates['/players/' + myName + '/pin_code'] = "";
-            atomicUpdates['/players/' + myName + '/offer_cards'] = null;
-            atomicUpdates['/players/' + myName + '/target_team'] = "";
-            atomicUpdates['/players/' + myName + '/typed_pin'] = "";
-            atomicUpdates['/players/' + myName + '/last_trade'] = { partner: targetTeam, ts: tradeId };
-            atomicUpdates['/players/' + targetTeam + '/cards'] = targetNewCards;
-            atomicUpdates['/players/' + targetTeam + '/trade_count'] = 0;
-            atomicUpdates['/players/' + targetTeam + '/pin_code'] = "";
-            atomicUpdates['/players/' + targetTeam + '/offer_cards'] = null;
-            atomicUpdates['/players/' + targetTeam + '/target_team'] = "";
-            atomicUpdates['/players/' + targetTeam + '/typed_pin'] = "";
-            atomicUpdates['/players/' + targetTeam + '/last_trade'] = { partner: myName, ts: tradeId };
+            await updatePlayer(myName, { target_team: targetTeam, typed_pin: inputPin, trade_version: Date.now() });
 
-            updateRoom(atomicUpdates).then(() => {
+            const [targetSnap, mySnap] = await Promise.all([
+                publicPlayersRef(targetTeam).get(),
+                playersRef(myName).get()
+            ]);
+            const targetPublicData = targetSnap.val() || {};
+            const myData = mySnap.val() || {};
+
+            if (myData.last_trade && myData.last_trade.partner === targetTeam && (myData.trade_count || 0) === 0) {
                 detachTargetWatch();
                 clearTradeUI();
-            });
-        } else {
+                return;
+            }
+
+            if (!targetPublicData.player_name || (targetPublicData.trade_count || 0) === 0 || (myData.trade_count || 0) === 0) {
+                cleanupStaleTarget('⚠️ 상대 투자자가 외침을 취소했거나 다른 거래를 끝냈습니다. 다시 골라주세요.');
+                return;
+            }
+            if (targetPublicData.target_team && targetPublicData.target_team !== myName) {
+                cleanupStaleTarget('⚠️ 상대 투자자가 다른 사람과 거래를 진행 중입니다. 다시 골라주세요.');
+                return;
+            }
+
+            const commitResult = await commitMatchedTrade(myName, targetTeam, inputPin);
+            if (commitResult && commitResult.committed) {
+                const room = commitResult.snapshot ? (commitResult.snapshot.val() || {}) : {};
+                latestSelfPlayerData = room.players && room.players[myName] ? room.players[myName] : latestSelfPlayerData;
+                myCards = Array.isArray(latestSelfPlayerData.cards) ? latestSelfPlayerData.cards : myCards;
+                detachTargetWatch();
+                clearTradeUI();
+                renderPortfolio();
+                return;
+            }
+
             watchTargetTeam(targetTeam);
             alert("📡 내 서명이 등록되었습니다.\n상대도 내 코드를 입력하면 자동 체결됩니다.");
+        } catch (err) {
+            console.error('거래 체결 실패:', err);
+            alert('거래 체결 중 오류가 발생했습니다. 다시 시도해 주세요.');
+        } finally {
+            if (lock && lock.ref) await releaseTradeLock(lock.ref, lockToken);
+            tradeCommitInProgress = false;
         }
     }
 
@@ -4218,7 +4455,7 @@
         if (!teamName || watchedTargetName === teamName) return;
         detachTargetWatch();
         watchedTargetName = teamName;
-        watchedTargetRef = playersRef(teamName);
+        watchedTargetRef = publicPlayersRef(teamName);
         watchedTargetRef.on('value', (snap) => {
             if (targetCleanupInProgress || globalStatus !== 'playing') return;
             const targetData = snap.val() || {};
@@ -4248,7 +4485,7 @@
     function cleanupStaleTarget(message) {
         if (targetCleanupInProgress || !myName) return;
         targetCleanupInProgress = true;
-        playersRef(myName).update({ target_team: "", typed_pin: "" }).then(() => {
+        updatePlayer(myName, { target_team: "", typed_pin: "", trade_version: Date.now() }).then(() => {
             detachTargetWatch();
             clearTargetUIOnly();
             targetCleanupInProgress = false;
@@ -4263,6 +4500,7 @@
         studentSelfListenerRef = playersRef(myName);
         studentSelfListenerRef.on('value', (snapshot) => {
             const data = snapshot.val() || {};
+            latestSelfPlayerData = data;
 
             if (data.ban_until && data.ban_until > Date.now()) {
                 document.getElementById('game-section').style.display = 'none';
@@ -4271,7 +4509,7 @@
                 banTimer = setInterval(() => {
                     const remain = Math.max(0, Math.round((data.ban_until - Date.now()) / 1000));
                     document.getElementById('ban-countdown').innerText = remain + "초";
-                    if (remain <= 0) { clearInterval(banTimer); playersRef(myName).update({ ban_until: null }); }
+                    if (remain <= 0) { clearInterval(banTimer); updatePlayer(myName, { ban_until: null }); }
                 }, 1000);
                 return;
             } else {
@@ -4295,7 +4533,7 @@
             const isCurrentDealCards = !globalDealId || data.cards_deal_id === globalDealId;
             if(data.cards && data.cards.length && isCurrentDealCards) {
                 myCards = data.cards;
-                if ((data.trade_count || 0) === 0) { clearTradeUI(); }
+                maybeClearTradeUIFromSelfState(data);
                 if (globalStatus === 'playing') {
                     renderPortfolio();
                 } else {
@@ -4303,7 +4541,7 @@
                 }
             } else {
                 myCards = [];
-                if ((data.trade_count || 0) === 0) { clearTradeUI(); }
+                maybeClearTradeUIFromSelfState(data);
                 if (globalStatus === 'playing') {
                     scheduleStudentCardRefresh();
                 } else {
@@ -4358,7 +4596,7 @@
         const status = config.status || 'waiting';
         globalStatus = status;
         const tradeBtn = document.getElementById('trade-submit-btn');
-        updateStudentAssetSummary(latestPlayersData[myName] || {});
+        updateStudentAssetSummary(latestSelfPlayerData || {});
 
         if (status === 'playing') {
             document.getElementById('student-gate-waiting').style.display = 'none';
@@ -4390,7 +4628,7 @@
             if (tradeBtn) tradeBtn.disabled = true;
             document.getElementById('result-modal-overlay').style.display = 'none';
             isModalOpenThisRound = false;
-            updateStudentReadyUI(myName ? (latestPlayersData[myName] || {}) : {});
+            updateStudentReadyUI(myName ? (latestSelfPlayerData || {}) : {});
         } else if (status === 'ended' && config.winner) {
             document.getElementById('student-gate-waiting').style.display = 'none';
             document.getElementById('student-gate-login').style.display = 'none';
@@ -4440,7 +4678,7 @@
 
     function closeResultModalAndGoReady() {
         document.getElementById('result-modal-overlay').style.display = 'none';
-        playersRef(myName).update({ ready: true });
+        updatePlayer(myName, { ready: true });
         document.getElementById('student-ready-btn').style.display = 'none';
         document.getElementById('student-ready-status').style.display = 'block';
         document.getElementById('student-ready-status').innerText = '✅ 거래 대기실 진입 성공!';
@@ -4631,14 +4869,15 @@
         if (!guardTeacherControl('1분 매매 제한')) return;
         if (!teamName) return;
         if (confirm(`🏢 [${teamLabelByName(teamName)}] 계좌를 1분 동안 매매 제한할까요?`)) {
-            playersRef(teamName).update({
+            updatePlayer(teamName, {
                 ban_until: Date.now() + 60000,
                 ready: false,
                 trade_count: 0,
                 pin_code: "",
                 offer_cards: null,
                 target_team: "",
-                typed_pin: ""
+                typed_pin: "",
+                trade_version: Date.now()
             });
         }
     }
@@ -4760,6 +4999,7 @@
                 updates['/players/' + key + '/offer_cards'] = null;
                 updates['/players/' + key + '/target_team'] = "";
                 updates['/players/' + key + '/typed_pin'] = "";
+                updates['/players/' + key + '/trade_version'] = Date.now();
             });
             return updateRoom(updates).then(() => {
                 if (isCeilingTriggered) {
@@ -4774,6 +5014,7 @@
         try {
             if (currentMode === 'student' && myName && studentPresenceRef) {
                 studentPresenceRef.update({ online: false, last_seen_at: Date.now() });
+                if (studentPublicPresenceRef) studentPublicPresenceRef.update({ online: false, last_seen_at: Date.now() });
             }
             if (currentMode === 'teacher' && teacherIsController) {
                 roomRef('teacher_lock').update({ online: false, disconnected_at: Date.now() });
