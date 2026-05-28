@@ -3689,36 +3689,54 @@
         }
 
         const myDeviceToken = getStudentDeviceToken();
+        const sessionId = globalEntrySessionId || "";
 
-        const latestSnap = await playersRef(teamInfo.name).get();
-        const latestPlayer = latestSnap.val() || {};
-        const claimedByOther = latestPlayer.joined &&
-            (!globalEntrySessionId || latestPlayer.joined_session_id === globalEntrySessionId) &&
-            latestPlayer.device_token !== myDeviceToken;
+        let txnResult = null;
+        try {
+            txnResult = await playersRef(teamInfo.name).transaction((current) => {
+                const p = current || {};
+                const joinedThisSession = p.joined && (!sessionId || p.joined_session_id === sessionId);
+                const claimedByOther = joinedThisSession && p.device_token && p.device_token !== myDeviceToken;
 
-        if (claimedByOther) {
-            alert('방금 다른 학생이 이 계좌를 선택했습니다. 다른 계좌를 선택해 주세요.');
+                if (claimedByOther) {
+                    return; // transaction abort
+                }
+
+                return {
+                    ...p,
+                    player_name: teamInfo.name,
+                    joined: true,
+                    joined_session_id: sessionId,
+                    ready: false,
+                    online: true,
+                    device_token: myDeviceToken,
+                    heartbeat_at: Date.now(),
+                    last_seen_at: Date.now()
+                };
+            });
+        } catch (err) {
+            console.error('계좌 점유 transaction 실패:', err);
+            alert('계좌 연결 중 오류가 발생했습니다. 다시 시도해 주세요.');
+            return;
+        }
+
+        if (!txnResult || !txnResult.committed) {
+            const latestPlayer = txnResult && txnResult.snapshot ? (txnResult.snapshot.val() || {}) : {};
             latestPlayersData[teamInfo.name] = latestPlayer;
+            alert('방금 다른 학생이 이 계좌를 선택했습니다. 다른 계좌를 선택해 주세요.');
             resetPendingStudentAccountSelection();
             renderTeamQuickGrid(globalMaxTeams, latestPlayersData);
             return;
         }
 
-        await playersRef(teamInfo.name).update({
-            player_name: teamInfo.name,
-            joined: true,
-            joined_session_id: globalEntrySessionId || "",
-            ready: false,
-            online: true,
-            device_token: myDeviceToken,
-            heartbeat_at: Date.now(),
-            last_seen_at: Date.now()
-        });
+        latestPlayersData[teamInfo.name] = txnResult.snapshot ? (txnResult.snapshot.val() || {}) : {};
 
         if (pendingStudentAccountChangeUsed) setAccountChangeCount(1);
         setSavedStudentSession(teamInfo.name);
         autoSessionLogin(teamInfo.name);
-        if (globalStatus === 'playing' || globalStatus === 'ready_check') { handleStudentStatusChange({ status: globalStatus }); }
+        if (globalStatus === 'playing' || globalStatus === 'ready_check') {
+            handleStudentStatusChange({ status: globalStatus });
+        }
     }
 
     function quickStudentEntry(teamInfo) {
@@ -4453,7 +4471,7 @@
             let msg = `🔔 🎉 ${winnerLabel} 상한가 달성! 장 마감!`;
             if(config.corner_type === 'double') msg = `🔥 🎉 ${winnerLabel} 황금주 포함 2배 상한가 달성! 🔥`;
             document.getElementById('winner-announcement').innerText = msg;
-            if (!config.score_applied) {
+            if (!config.score_applied && canTeacherControlNow()) {
                 playBellSound();
                 calculateOriginalScores(config.winner, config.corner_type, config.winning_stock).then((gameOverTriggered) => {
                     if (!gameOverTriggered) gameConfigRef('score_applied').set(true);
@@ -4659,7 +4677,7 @@
         const sorted = Object.keys(players).map(k => players[k]).filter(p => p && p.player_name).sort((a,b) => (b.total_score || 0) - (a.total_score || 0));
         const layers = [
             { pos: 1, label: "🥈 2위", color: "#cbd5e1", h: "100px" },
-            { pos: 0, label: "🥇 대왕소 1위", color: "#f59e0b", h: "150px" },
+            { pos: 0, label: "🥇 대황소 1위", color: "#f59e0b", h: "150px" },
             { pos: 2, label: "🥉 3위", color: "#b45309", h: "75px" }
         ];
         layers.forEach(item => {
@@ -4725,7 +4743,7 @@
                 const pCards = Array.isArray(p.cards) ? p.cards : Object.values(p.cards);
                 
                 if (p.player_name === winnerName) {
-                    const baseScore = STOCK_VALS[winningStock] || 60;
+                    const baseScore = STOCK_VALS[winningStock] || 50;
                     roundScore = (cornerType === 'double') ? baseScore * 2 : baseScore;
                 } else {
                     let penalty = 0;
