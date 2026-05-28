@@ -1366,6 +1366,36 @@
             background: #334155;
             border: 1px solid #64748b;
         }
+        #teacher-password-btn.teacher-password-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #111827;
+            border: 1px solid #fbbf24;
+            color: #f8fafc;
+            padding: 8px 12px;
+        }
+        #teacher-password-btn.teacher-password-badge.password-missing {
+            border-color: #ef4444;
+        }
+        #teacher-room-password-display {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 46px;
+            padding: 3px 8px;
+            border-radius: 7px;
+            background: #fbbf24;
+            color: #111827;
+            font-size: 1.05rem;
+            font-weight: 900;
+            letter-spacing: 0;
+        }
+        #teacher-password-btn.password-missing #teacher-room-password-display {
+            background: #ef4444;
+            color: #ffffff;
+            font-size: 0.92rem;
+        }
 
     </style>
 </head>
@@ -1553,7 +1583,10 @@
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <button class="home-btn" onclick="goHome(false)">🏠 홈</button>
             <div class="room-badge">🏫 <span id="teacher-room-code">한국 코스피 (KOSPI)</span></div>
-            <button class="home-btn" id="teacher-password-btn" onclick="setTeacherRoomPasswordManually()">🔑 입장 비밀번호</button>
+            <button class="home-btn teacher-password-badge password-missing" id="teacher-password-btn" onclick="setTeacherRoomPasswordManually()" title="학생에게 보여줄 입장 비밀번호입니다. 클릭하면 다시 설정합니다.">
+                <span>🔑 입장 비밀번호</span>
+                <strong id="teacher-room-password-display">미설정</strong>
+            </button>
         <div class="room-badge teacher-lock-badge readonly" id="teacher-lock-badge">🔐 제어권 확인 중</div>
         <button class="teacher-takeover-btn" id="teacher-takeover-btn" onclick="takeOverTeacherLock()">사용 중</button>
         </div>
@@ -2050,6 +2083,18 @@
         });
     }
 
+    function updateTeacherPasswordDisplay(password = '') {
+        const display = document.getElementById('teacher-room-password-display');
+        const btn = document.getElementById('teacher-password-btn');
+        if (!display || !btn) return;
+        const pw = String(password || '').trim();
+        display.innerText = pw || '미설정';
+        btn.classList.toggle('password-missing', !pw);
+        btn.title = pw
+            ? '학생에게 이 입장 비밀번호를 보여 주세요. 클릭하면 다시 설정합니다.'
+            : '입장 비밀번호가 아직 없습니다. 클릭해서 설정합니다.';
+    }
+
     async function verifyStudentRoomPasswordBeforeEntry(code) {
         await ensureFirebaseReady();
         const snap = await roomRefForCode(code, 'game_config').once('value');
@@ -2084,6 +2129,7 @@
         const config = snap.val() || {};
         latestGameConfig = config;
         const existing = String(config.room_password || '').trim();
+        updateTeacherPasswordDisplay(existing);
         if (existing) return true;
 
         const pw = promptTeacherRoomPassword(getRoomLabel(currentRoomCode));
@@ -2094,6 +2140,7 @@
 
         await saveTeacherRoomPassword(currentRoomCode, pw);
         latestGameConfig = { ...(latestGameConfig || {}), room_password: pw };
+        updateTeacherPasswordDisplay(pw);
         return true;
     }
 
@@ -2103,6 +2150,7 @@
         if (pw === null) return;
         await saveTeacherRoomPassword(currentRoomCode, pw);
         latestGameConfig = { ...(latestGameConfig || {}), room_password: pw };
+        updateTeacherPasswordDisplay(pw);
         alert('학생 입장 비밀번호를 설정했습니다.');
     }
 
@@ -3454,6 +3502,7 @@
         gameConfigListenerRef.on('value', (snapshot) => {
             const config = snapshot.val() || {};
             latestGameConfig = config;
+            updateTeacherPasswordDisplay(config.room_password || '');
             const nextStatus = config.status || 'waiting';
             if (previousGlobalStatus !== nextStatus && (nextStatus === 'waiting' || nextStatus === 'ready_check' || nextStatus === 'ended')) {
                 pendingBigHands = [];
@@ -3889,6 +3938,7 @@
             const configSnap = await gameConfigRef().once('value');
             latestGameConfig = configSnap.val() || {};
             globalStatus = latestGameConfig.status || 'waiting';
+            updateTeacherPasswordDisplay(latestGameConfig.room_password || '');
             handleTeacherStatusChange(latestGameConfig);
 
             await acquireTeacherControl(false);
@@ -4365,13 +4415,31 @@
         const lockToken = makeToken('trade_lock');
         let lock = null;
         try {
+            await updatePlayer(myName, { target_team: targetTeam, typed_pin: inputPin, trade_version: Date.now() });
+
             lock = await acquireTradeLock(myName, targetTeam, lockToken);
             if (!lock.ok) {
-                alert('⚠️ 이 투자자는 방금 다른 거래를 처리 중입니다. 잠시 후 다시 시도해 주세요.');
+                watchTargetTeam(targetTeam);
+                alert('📡 내 서명이 저장되었습니다.\n상대 거래 처리와 겹쳤습니다. 잠시 후 자동 체결되지 않으면 계약 승인을 한 번 더 눌러 주세요.');
                 return;
             }
 
-            await updatePlayer(myName, { target_team: targetTeam, typed_pin: inputPin, trade_version: Date.now() });
+            let commitResult = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                commitResult = await commitMatchedTrade(myName, targetTeam, inputPin);
+                if (commitResult && commitResult.committed) break;
+                await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 250 : 600));
+            }
+
+            if (commitResult && commitResult.committed) {
+                const room = commitResult.snapshot ? (commitResult.snapshot.val() || {}) : {};
+                latestSelfPlayerData = room.players && room.players[myName] ? room.players[myName] : latestSelfPlayerData;
+                myCards = Array.isArray(latestSelfPlayerData.cards) ? latestSelfPlayerData.cards : myCards;
+                detachTargetWatch();
+                clearTradeUI();
+                renderPortfolio();
+                return;
+            }
 
             const [targetSnap, mySnap] = await Promise.all([
                 publicPlayersRef(targetTeam).get(),
@@ -4392,17 +4460,6 @@
             }
             if (targetPublicData.target_team && targetPublicData.target_team !== myName) {
                 cleanupStaleTarget('⚠️ 상대 투자자가 다른 사람과 거래를 진행 중입니다. 다시 골라주세요.');
-                return;
-            }
-
-            const commitResult = await commitMatchedTrade(myName, targetTeam, inputPin);
-            if (commitResult && commitResult.committed) {
-                const room = commitResult.snapshot ? (commitResult.snapshot.val() || {}) : {};
-                latestSelfPlayerData = room.players && room.players[myName] ? room.players[myName] : latestSelfPlayerData;
-                myCards = Array.isArray(latestSelfPlayerData.cards) ? latestSelfPlayerData.cards : myCards;
-                detachTargetWatch();
-                clearTradeUI();
-                renderPortfolio();
                 return;
             }
 
