@@ -4292,7 +4292,9 @@
     }
 
     async function commitMatchedTrade(myTeam, targetTeam, inputPin) {
-        return roomRef().transaction((room) => {
+        const ref = roomRef();
+        await ref.once('value');
+        return ref.transaction((room) => {
             if (!room || !room.players) return;
             const players = room.players;
             const me = players[myTeam] || {};
@@ -4324,6 +4326,82 @@
                 typed_pin: "",
                 last_trade: { partner: targetTeam, ts: tradeId },
                 trade_version: Number(me.trade_version || 0) + 1
+            };
+            players[targetTeam] = {
+                ...target,
+                cards: targetRemaining.concat(mySelected),
+                trade_count: 0,
+                pin_code: "",
+                offer_cards: null,
+                target_team: "",
+                typed_pin: "",
+                last_trade: { partner: myTeam, ts: tradeId },
+                trade_version: Number(target.trade_version || 0) + 1
+            };
+            room.players = players;
+            syncRoomPublicPlayer(room, myTeam);
+            syncRoomPublicPlayer(room, targetTeam);
+            return room;
+        });
+    }
+
+    async function signAndMaybeCommitTrade(myTeam, targetTeam, inputPin) {
+        const ref = roomRef();
+        await ref.once('value');
+        return ref.transaction((room) => {
+            if (!room || !room.players) return;
+            const players = room.players;
+            const me = players[myTeam] || {};
+            const target = players[targetTeam] || {};
+            const myTradeCount = Number(me.trade_count || 0);
+            const targetTradeCount = Number(target.trade_count || 0);
+
+            if (!target.player_name || !myTradeCount || !targetTradeCount) return;
+            if (target.target_team && target.target_team !== myTeam) return;
+
+            const signedMe = {
+                ...me,
+                target_team: targetTeam,
+                typed_pin: String(inputPin || '').trim(),
+                trade_version: Number(me.trade_version || 0) + 1
+            };
+            players[myTeam] = signedMe;
+
+            if (myTradeCount !== targetTradeCount) {
+                room.players = players;
+                syncRoomPublicPlayer(room, myTeam);
+                return room;
+            }
+
+            const bothSigned = target.target_team === myTeam &&
+                target.typed_pin === signedMe.pin_code &&
+                signedMe.typed_pin === target.pin_code;
+
+            if (!bothSigned) {
+                room.players = players;
+                syncRoomPublicPlayer(room, myTeam);
+                return room;
+            }
+
+            const mySelected = Array.isArray(signedMe.offer_cards) ? [...signedMe.offer_cards] : [];
+            const targetSelected = Array.isArray(target.offer_cards) ? [...target.offer_cards] : [];
+            if (mySelected.length !== myTradeCount || targetSelected.length !== targetTradeCount) return;
+
+            const myRemaining = removeCardsFromHand(signedMe.cards, mySelected);
+            const targetRemaining = removeCardsFromHand(target.cards, targetSelected);
+            if (!myRemaining || !targetRemaining) return;
+
+            const tradeId = Date.now();
+            players[myTeam] = {
+                ...signedMe,
+                cards: myRemaining.concat(targetSelected),
+                trade_count: 0,
+                pin_code: "",
+                offer_cards: null,
+                target_team: "",
+                typed_pin: "",
+                last_trade: { partner: targetTeam, ts: tradeId },
+                trade_version: Number(signedMe.trade_version || 0) + 1
             };
             players[targetTeam] = {
                 ...target,
@@ -4469,79 +4547,18 @@
         tradeCommitInProgress = true;
 
         try {
-            await updatePlayer(myName, { target_team: targetTeam, typed_pin: inputPin, trade_version: Date.now() });
+            const result = await signAndMaybeCommitTrade(myName, targetTeam, inputPin);
+            if (!result || !result.committed) {
+                alert('⚠️ 상대가 거래를 취소했거나 다른 거래를 진행 중입니다. 다시 확인해 주세요.');
+                return;
+            }
 
-            const [targetSnap, mySnap] = await Promise.all([
-                playersRef(targetTeam).get(),
-                playersRef(myName).get()
-            ]);
-            const targetData = targetSnap.val() || {};
-            const myData = mySnap.val() || {};
+            const room = result.snapshot ? (result.snapshot.val() || {}) : {};
+            const myData = room.players && room.players[myName] ? room.players[myName] : {};
+            latestSelfPlayerData = myData;
 
             if (myData.last_trade && myData.last_trade.partner === targetTeam && (myData.trade_count || 0) === 0) {
-                detachTargetWatch();
-                clearTradeUI();
-                return;
-            }
-
-            if (!targetData.player_name || (targetData.trade_count || 0) === 0 || (myData.trade_count || 0) === 0) {
-                cleanupStaleTarget('⚠️ 상대 투자자가 외침을 취소했거나 다른 거래를 끝냈습니다. 다시 골라주세요.');
-                return;
-            }
-            if (targetData.target_team && targetData.target_team !== myName) {
-                cleanupStaleTarget('⚠️ 상대 투자자가 다른 사람과 거래를 진행 중입니다. 다시 골라주세요.');
-                return;
-            }
-
-            const countsMatch = Number(myData.trade_count || 0) === Number(targetData.trade_count || 0);
-            const pinsMatch = targetData.target_team === myName &&
-                targetData.typed_pin === myData.pin_code &&
-                myData.typed_pin === targetData.pin_code &&
-                myData.typed_pin === inputPin;
-            const mySelected = Array.isArray(myData.offer_cards) ? [...myData.offer_cards] : [];
-            const targetSelected = Array.isArray(targetData.offer_cards) ? [...targetData.offer_cards] : [];
-
-            if (countsMatch && pinsMatch &&
-                mySelected.length === Number(myData.trade_count || 0) &&
-                targetSelected.length === Number(targetData.trade_count || 0)) {
-                const myRemaining = removeCardsFromHand(myData.cards, mySelected);
-                const targetRemaining = removeCardsFromHand(targetData.cards, targetSelected);
-                if (!myRemaining || !targetRemaining) {
-                    cleanupStaleTarget('⚠️ 카드 상태가 바뀌었습니다. 다시 거래를 등록해 주세요.');
-                    return;
-                }
-
-                const tradeId = Date.now();
-                const atomicUpdates = {};
-                atomicUpdates['/players/' + myName + '/cards'] = myRemaining.concat(targetSelected);
-                atomicUpdates['/players/' + myName + '/trade_count'] = 0;
-                atomicUpdates['/players/' + myName + '/pin_code'] = "";
-                atomicUpdates['/players/' + myName + '/offer_cards'] = null;
-                atomicUpdates['/players/' + myName + '/target_team'] = "";
-                atomicUpdates['/players/' + myName + '/typed_pin'] = "";
-                atomicUpdates['/players/' + myName + '/last_trade'] = { partner: targetTeam, ts: tradeId };
-                atomicUpdates['/players/' + myName + '/trade_version'] = Number(myData.trade_version || 0) + 1;
-                atomicUpdates['/players/' + targetTeam + '/cards'] = targetRemaining.concat(mySelected);
-                atomicUpdates['/players/' + targetTeam + '/trade_count'] = 0;
-                atomicUpdates['/players/' + targetTeam + '/pin_code'] = "";
-                atomicUpdates['/players/' + targetTeam + '/offer_cards'] = null;
-                atomicUpdates['/players/' + targetTeam + '/target_team'] = "";
-                atomicUpdates['/players/' + targetTeam + '/typed_pin'] = "";
-                atomicUpdates['/players/' + targetTeam + '/last_trade'] = { partner: myName, ts: tradeId };
-                atomicUpdates['/players/' + targetTeam + '/trade_version'] = Number(targetData.trade_version || 0) + 1;
-
-                await updateRoom(atomicUpdates);
-                latestSelfPlayerData = {
-                    ...myData,
-                    cards: myRemaining.concat(targetSelected),
-                    trade_count: 0,
-                    pin_code: "",
-                    offer_cards: null,
-                    target_team: "",
-                    typed_pin: "",
-                    last_trade: { partner: targetTeam, ts: tradeId }
-                };
-                myCards = latestSelfPlayerData.cards;
+                myCards = Array.isArray(myData.cards) ? myData.cards : myCards;
                 detachTargetWatch();
                 clearTradeUI();
                 renderPortfolio();
