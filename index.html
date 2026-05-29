@@ -3511,9 +3511,14 @@
             }
             previousGlobalStatus = nextStatus;
             globalStatus = nextStatus;
-            globalMaxTeams = config.max_teams || 8;
-            globalEndScore = config.end_score || 300;
-            globalBigHands = config.big_hand_teams || [];
+            globalMaxTeams = Number(config.max_teams) || 8;
+            globalEndScore = Number(config.end_score) || 300;
+            // ⚠️ 자료형 방어: Firebase가 배열을 객체로 압축하거나 항목을 string으로 저장하는
+            //    경우가 있어 includes() 비교가 실패할 수 있음. 모든 항목을 Number로 정규화.
+            const rawBigHands = config.big_hand_teams || [];
+            globalBigHands = (Array.isArray(rawBigHands) ? rawBigHands : Object.values(rawBigHands))
+                .map(v => Number(v))
+                .filter(v => Number.isInteger(v) && v >= 1 && v <= 8);
             globalEntrySessionId = config.entry_session_id || "";
             globalDealId = config.deal_id || "";
 
@@ -3769,7 +3774,7 @@
             gameConfigRef('end_score').set(val);
             playersRef().once('value').then((snap) => {
                 const players = snap.val() || {}; let trigger = false;
-                Object.keys(players).forEach(k => { if ((players[k].total_score || 0) >= val) trigger = true; });
+                Object.keys(players).forEach(k => { if ((Number(players[k].total_score) || 0) >= val) trigger = true; });
                 if (trigger) gameConfigRef().update({ status: 'game_over', updated_at: Date.now(), status_changed_at: Date.now() });
             });
         } else {
@@ -4080,9 +4085,13 @@
             '/game_config/status_changed_at': Date.now(),
             '/trade_locks': null
         };
+        // ⚠️ 자료형 방어: bigHandTeams가 어떤 이유로 string 배열일 수 있으니 강제 Number 변환
+        const safeBigHands = (Array.isArray(bigHandTeams) ? bigHandTeams : Object.values(bigHandTeams || {}))
+            .map(v => Number(v))
+            .filter(v => Number.isInteger(v));
         for(let i = 1; i <= globalMaxTeams; i++) {
             const tName = MASTER_TEAMS[i-1].name;
-            const count = bigHandTeams.includes(i) ? 10 : 9;
+            const count = safeBigHands.includes(i) ? 10 : 9;
             const hand = deck.splice(0, count);
             updates['/players/' + tName + '/cards'] = hand;
             updates['/players/' + tName + '/cards_deal_id'] = dealId;
@@ -4805,12 +4814,13 @@
             const data = snapshot.val() || {};
             latestSelfPlayerData = data;
 
-            if (data.ban_until && data.ban_until > Date.now()) {
+            const banUntilNum = Number(data.ban_until) || 0;
+            if (banUntilNum > Date.now()) {
                 document.getElementById('game-section').style.display = 'none';
                 document.getElementById('ban-section').style.display = 'flex';
                 clearInterval(banTimer);
                 banTimer = setInterval(() => {
-                    const remain = Math.max(0, Math.round((data.ban_until - Date.now()) / 1000));
+                    const remain = Math.max(0, Math.round((banUntilNum - Date.now()) / 1000));
                     document.getElementById('ban-countdown').innerText = remain + "초";
                     if (remain <= 0) { clearInterval(banTimer); updatePlayer(myName, { ban_until: null }); }
                 }, 1000);
@@ -5116,7 +5126,7 @@
             setupBtn.disabled = true; nextBtn.disabled = true;
         }
 
-        const sortedKeys = Object.keys(players).sort((a, b) => (players[b].total_score || 0) - (players[a].total_score || 0));
+        const sortedKeys = Object.keys(players).sort((a, b) => (Number(players[b].total_score) || 0) - (Number(players[a].total_score) || 0));
         sortedKeys.forEach(key => {
             const p = players[key]; if(!p.player_name) return;
             const matchedTeam = MASTER_TEAMS.find(t => t.name === p.player_name);
@@ -5149,7 +5159,7 @@
                 <td>${getBanStatusText(p)}</td>
                 <td><div class="teacher-action-stack">${manageBtn}</div></td>
                 <td style="color:${currentRoundEarn >= 0 ? '#10b981':'#ef4444'}; font-weight:bold;">${currentRoundEarn >= 0 ? '+' : ''}${currentRoundEarn}원</td>
-                <td style="color:#f59e0b; font-weight:bold; font-size:1.25rem;">${p.total_score || 0}원</td>
+                <td style="color:#f59e0b; font-weight:bold; font-size:1.25rem;">${Number(p.total_score) || 0}원</td>
                 <td><div class="wallet-emoji" title="마우스를 올리면 선명하게 보입니다.">${getWalletEmoji(cards)}</div></td>
             `;
             tbody.appendChild(tr);
@@ -5216,7 +5226,7 @@
 
     function renderFinalPodiumGraphics(players) {
         const container = document.getElementById('podium-display'); container.innerHTML = '';
-        const sorted = Object.keys(players).map(k => players[k]).filter(p => p && p.player_name).sort((a,b) => (b.total_score || 0) - (a.total_score || 0));
+        const sorted = Object.keys(players).map(k => players[k]).filter(p => p && p.player_name).sort((a,b) => (Number(b.total_score) || 0) - (Number(a.total_score) || 0));
         const layers = [
             { pos: 1, label: "🥈 2위", color: "#cbd5e1", h: "100px" },
             { pos: 0, label: "🥇 대황소 1위", color: "#f59e0b", h: "150px" },
@@ -5228,7 +5238,7 @@
                 const block = document.createElement('div'); block.style.width = "30%"; block.style.textAlign = "center";
                 block.innerHTML = `
                     <div style="font-weight:bold; color:white; font-size:1.1rem; margin-bottom:6px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${teamLabelByName(p.player_name)}</div>
-                    <div style="color:var(--accent); font-weight:bold; margin-bottom:8px; font-size:1.05rem;">${p.total_score || 0}원</div>
+                    <div style="color:var(--accent); font-weight:bold; margin-bottom:8px; font-size:1.05rem;">${Number(p.total_score) || 0}원</div>
                     <div style="background:${item.color}; height:${item.h}; border-radius:10px 10px 0 0; color:#0f172a; font-weight:bold; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">${item.label}</div>
                 `; container.appendChild(block);
             }
@@ -5276,7 +5286,7 @@
     function calculateOriginalScores(winnerName, cornerType, winningStock) {
         return playersRef().once('value').then((snapshot) => {
             const players = snapshot.val() || {}; let isCeilingTriggered = false;
-            const endScore = globalEndScore;
+            const endScore = Number(globalEndScore) || 300;
             const updates = {};
             Object.keys(players).forEach(key => {
                 const p = players[key]; if (!p.cards) return; let roundScore = 0;
@@ -5293,9 +5303,13 @@
                     if(pCards.includes(BULL)) penalty -= 20; // 패배 시 황금주 보유 손실 정밀 작동
                     roundScore = penalty;
                 }
-                const newTotal = (p.total_score || 0) + roundScore;
+                // ⚠️ 자료형 방어: total_score가 어떤 이유로 문자열로 들어와도
+                //    숫자 덧셈이 되도록 Number() 강제 변환. 이전 버그: '250'+100='250100'
+                const prevTotal = Number(p.total_score) || 0;
+                const safeRoundScore = Number(roundScore) || 0;
+                const newTotal = prevTotal + safeRoundScore;
                 if (newTotal >= endScore) { isCeilingTriggered = true; }
-                updates['/players/' + key + '/round_earn'] = roundScore;
+                updates['/players/' + key + '/round_earn'] = safeRoundScore;
                 updates['/players/' + key + '/total_score'] = newTotal;
                 updates['/players/' + key + '/trade_count'] = 0;
                 updates['/players/' + key + '/pin_code'] = "";
